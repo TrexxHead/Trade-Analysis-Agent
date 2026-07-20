@@ -1,0 +1,28 @@
+# Your trading plan, expressed as checkable rules. Edit these to match your
+# actual plan — the numbers below are placeholders, not advice.
+
+risk:
+  max_risk_per_trade_pct: 1.0     # % of account balance risked on a single trade
+  max_daily_loss_pct: 3.0         # stop trading for the day past this cumulative loss
+  max_open_positions: 3
+
+behavior:
+  min_minutes_between_trades_after_loss: 15   # flags likely revenge trading
+  max_trades_per_day: 6
+  allowed_sessions_utc:                       # hour ranges (UTC) you're allowed to trade
+    - [7, 11]    # London
+    - [13, 17]   # NY overlap
+
+mistakes:
+  - id: revenge_trade
+    description: "Re-entered within {min_minutes_between_trades_after_loss} min of a loss"
+  - id: oversize_risk
+    description: "Position risk exceeded max_risk_per_trade_pct of account balance"
+  - id: outside_session
+    description: "Trade opened outside allowed_sessions_utc"
+  - id: overtrading
+    description: "Exceeded max_trades_per_day"
+  - id: daily_loss_limit_breached
+    description: "Cumulative daily loss exceeded max_daily_loss_pct after this trade"
+  - id: too_many_open_positions
+    description: "Exceeded max_open_positions at time of entry"

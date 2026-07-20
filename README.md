@@ -128,6 +128,41 @@ possible to trigger by accident.
 - There's no backtest yet — proposals are only checked against live-fetched
   candles going forward from whenever you start running scans.
 
+## Backtesting (no live connection needed)
+
+Since live Deriv/MetaApi connections require an environment with normal
+outbound network access, `scripts/run_backtest.py` lets the baseline
+strategy be validated against historical data instead - useful while that's
+being sorted out, and worth doing before going live either way.
+
+Export candles from your MT4/5 terminal (Tools -> History Center in MT4,
+`F2` in MT5 - pick the symbol, a timeframe matching `config/strategy.yaml`'s
+`timeframe` (H1 by default), export to CSV), then:
+
+```bash
+python scripts/run_backtest.py \
+  --csv path/to/export.csv \
+  --symbol EURUSD \
+  --tick-size 0.0001 \
+  --tick-value 1.0 \
+  --starting-balance 10000
+```
+
+`--tick-size`/`--tick-value` describe the instrument's pip value for your
+account currency (check your broker/MT4 "Contract Specification" for the
+symbol) - they're what turn a price move into a dollar P&L, same as the live
+position-sizing math in `src/strategy/order_spec.py`.
+
+**Scope, on purpose:** this only simulates `mt4_mt5`-style trades (real
+price-level stop-loss/take-profit), since that's what MT4/5 history export
+naturally gives you. Deriv Multipliers (monetary stop/take-profit) and
+Options (fixed duration, no stop) would need different fill simulation logic
+that isn't built yet - see `src/backtest/engine.py`.
+
+Results are written to `backtests_out/<symbol>_<timestamp>.json` and reuse
+the same stats/rule-checking code as the live reporting side, so a
+backtest's numbers are directly comparable to what a real report would show.
+
 ## Scheduling
 
 Once ingestion is verified working end-to-end, the daily/weekly/monthly

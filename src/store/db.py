@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "trades.db"
@@ -29,7 +30,22 @@ CREATE TABLE IF NOT EXISTS trade_flags (
     FOREIGN KEY (trade_id) REFERENCES trades(id)
 );
 
+CREATE TABLE IF NOT EXISTS trade_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    order_spec_json TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    decided_at TEXT,
+    decision_note TEXT,
+    executed_order_id TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_close_time ON trades(close_time);
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON trade_proposals(status);
 """
 
 
@@ -120,3 +136,51 @@ def get_flags(conn: sqlite3.Connection, start: str | None = None, end: str | Non
         query += " AND trades.close_time < ?"
         params.append(end)
     return [dict(row) for row in conn.execute(query, params)]
+
+
+def create_proposal(conn: sqlite3.Connection, platform: str, symbol: str, direction: str,
+                     order_spec: dict, rationale: str) -> int:
+    cursor = conn.execute(
+        """
+        INSERT INTO trade_proposals (created_at, platform, symbol, direction, order_spec_json, rationale)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (datetime.now(timezone.utc).isoformat(), platform, symbol, direction, json.dumps(order_spec), rationale),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def has_pending_proposal(conn: sqlite3.Connection, symbol: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM trade_proposals WHERE symbol = ? AND status = 'pending' LIMIT 1", (symbol,)
+    ).fetchone()
+    return row is not None
+
+
+def get_proposal(conn: sqlite3.Connection, proposal_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM trade_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_proposals(conn: sqlite3.Connection, status: str | None = None) -> list[dict]:
+    if status:
+        rows = conn.execute(
+            "SELECT * FROM trade_proposals WHERE status = ? ORDER BY created_at ASC", (status,)
+        )
+    else:
+        rows = conn.execute("SELECT * FROM trade_proposals ORDER BY created_at ASC")
+    return [dict(row) for row in rows]
+
+
+def update_proposal_status(conn: sqlite3.Connection, proposal_id: int, status: str,
+                            note: str | None = None, executed_order_id: str | None = None) -> None:
+    conn.execute(
+        """
+        UPDATE trade_proposals
+        SET status = ?, decided_at = ?, decision_note = ?, executed_order_id = COALESCE(?, executed_order_id)
+        WHERE id = ?
+        """,
+        (status, datetime.now(timezone.utc).isoformat(), note, executed_order_id, proposal_id),
+    )
+    conn.commit()

@@ -6,6 +6,7 @@ a Python SDK. MT4/5 report trades as separate "deals" (an opening deal and
 one or more closing deals sharing a positionId), so this groups them back
 into single trades before handing them to the rest of the pipeline.
 """
+import asyncio
 import os
 from datetime import datetime, timezone
 
@@ -65,7 +66,7 @@ def group_into_trades(account_id: str, deals: list[dict]) -> list[dict]:
     return trades
 
 
-async def _fetch_deals(token: str, account_id: str, date_from: datetime, date_to: datetime) -> list[dict]:
+async def _connected_rpc(token: str, account_id: str):
     api = MetaApi(token)
     account = await api.metatrader_account_api.get_account(account_id)
     await account.wait_connected()
@@ -73,13 +74,99 @@ async def _fetch_deals(token: str, account_id: str, date_from: datetime, date_to
     connection = account.get_rpc_connection()
     await connection.connect()
     await connection.wait_synchronized()
+    return connection
 
+
+async def _fetch_deals(token: str, account_id: str, date_from: datetime, date_to: datetime) -> list[dict]:
+    connection = await _connected_rpc(token, account_id)
     return await connection.get_deals_by_time_range(date_from, date_to)
 
 
 def fetch_trades(date_from: datetime, date_to: datetime) -> list[dict]:
     token = os.environ["METAAPI_TOKEN"]
     account_id = os.environ["METAAPI_ACCOUNT_ID"]
-    import asyncio
     deals = asyncio.run(_fetch_deals(token, account_id, date_from, date_to))
     return group_into_trades(account_id, deals)
+
+
+# --- Everything below here (candles, symbol specs, account info, order
+# placement) uses MetaApi SDK methods based on its documented API shape.
+# Method/field names have not been verified against a live account or the
+# exact installed SDK version - do that against a demo account before
+# trusting this for real orders, and adjust names if they don't match.
+
+async def _fetch_candles_async(symbol: str, timeframe: str, count: int) -> list[dict]:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    connection = await _connected_rpc(token, account_id)
+    candles = await connection.get_candles(symbol, timeframe, limit=count)
+    return [
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        for c in candles
+    ]
+
+
+def fetch_candles(symbol: str, timeframe: str, count: int) -> list[dict]:
+    return asyncio.run(_fetch_candles_async(symbol, timeframe, count))
+
+
+async def _get_symbol_spec_async(symbol: str) -> dict:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    connection = await _connected_rpc(token, account_id)
+    spec = await connection.get_symbol_specification(symbol)
+    return {
+        "tick_size": spec["tickSize"],
+        "tick_value": spec["tickValue"],
+        "volume_step": spec.get("volumeStep", 0.01),
+    }
+
+
+def get_symbol_spec(symbol: str) -> dict:
+    return asyncio.run(_get_symbol_spec_async(symbol))
+
+
+async def _get_account_info_async() -> dict:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    connection = await _connected_rpc(token, account_id)
+    return await connection.get_account_information()
+
+
+def get_account_info() -> dict:
+    """Returns MetaApi's accountInformation payload - includes balance and trade mode."""
+    return asyncio.run(_get_account_info_async())
+
+
+def is_demo_account(account_info: dict) -> bool:
+    # MetaApi surfaces the MT trade mode (e.g. ACCOUNT_TRADE_MODE_DEMO vs
+    # _REAL) somewhere in accountInformation - the exact key has not been
+    # confirmed against a live response. Check both common spellings and
+    # fail closed (treat as NOT demo, i.e. block execution) if neither matches,
+    # rather than silently assuming it's safe.
+    value = str(account_info.get("type") or account_info.get("tradeMode") or "").upper()
+    return "DEMO" in value
+
+
+async def _place_order_async(symbol: str, direction: str, volume: float,
+                              stop: float | None, target: float | None, require_demo: bool) -> dict:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    connection = await _connected_rpc(token, account_id)
+
+    if require_demo:
+        info = await connection.get_account_information()
+        if not is_demo_account(info):
+            raise RuntimeError(
+                f"Refusing to place a trade: MetaApi account {account_id} did not report as demo/virtual. "
+                "Pass require_demo=False explicitly once you're ready to trade live."
+            )
+
+    if direction == "long":
+        return await connection.create_market_buy_order(symbol, volume, stop_loss=stop, take_profit=target)
+    return await connection.create_market_sell_order(symbol, volume, stop_loss=stop, take_profit=target)
+
+
+def place_trade(symbol: str, direction: str, volume: float,
+                 stop: float | None = None, target: float | None = None, require_demo: bool = True) -> dict:
+    return asyncio.run(_place_order_async(symbol, direction, volume, stop, target, require_demo))

@@ -1,0 +1,47 @@
+# Baseline strategy: trend-following pullback entries.
+#
+# Trade only in the direction of the higher-timeframe trend (fast EMA vs
+# slow EMA), enter on a pullback toward the fast EMA once RSI shows the
+# pullback losing steam. This is a conservative, well-known approach meant
+# as a starting point - tune it once you've seen it produce proposals on
+# a demo account.
+
+timeframe: H1        # candle timeframe pulled for signal detection
+lookback_candles: 300 # how many candles to fetch/analyze per scan
+
+trend:
+  fast_ema: 50
+  slow_ema: 200
+
+entry:
+  rsi_period: 14
+  rsi_lookback: 5              # how many recent bars to check for the RSI dip/recovery
+  rsi_oversold_recovery: 40    # long entries: RSI dipped below this, now turning back up
+  rsi_overbought_recovery: 60  # short entries: RSI rose above this, now turning back down
+  pullback_atr_multiple: 1.0   # price must be within this many ATRs of the fast EMA
+
+exit:
+  atr_period: 14
+  stop_atr_multiple: 1.5    # stop distance = this many ATRs from entry (mt4_mt5 / deriv_multipliers only)
+  reward_risk_ratio: 2.0    # target distance = reward_risk_ratio x stop distance
+
+# Each instrument declares which platform it trades on, since that changes
+# how risk is expressed in the resulting order (see src/strategy/order_spec.py):
+#   mt4_mt5           - stop-loss/take-profit as price levels, position size from risk %
+#   deriv_multipliers - stop-loss/take-profit as monetary amounts, fixed nominal stake
+#   deriv_options     - no stop/target; stake IS the risk, duration replaces "exit"
+instruments:
+  - symbol: EURUSD
+    platform: mt4_mt5
+  - symbol: XAUUSD
+    platform: mt4_mt5
+  - symbol: R_100
+    platform: deriv_multipliers
+    multiplier: 100
+  - symbol: R_50
+    platform: deriv_options
+    duration: 6
+    duration_unit: h
+
+execution:
+  require_demo: true   # refuse to execute unless the connected account resolves to demo/virtual

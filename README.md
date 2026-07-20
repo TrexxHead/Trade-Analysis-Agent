@@ -2,7 +2,11 @@
 
 Pulls your trade history from Deriv and MetaTrader (via MetaApi.cloud), checks
 every trade against your own trading-plan rules, and builds the data behind
-daily/weekly/monthly reports (mistakes made, progress trends, stats).
+daily/weekly/monthly reports (mistakes made, progress trends, stats). It can
+also scan for a baseline trend-following setup and propose trades — but it
+never places one without your explicit approval, and it refuses to execute
+anything on a non-demo account unless you override that on purpose. See
+[Trading proposals](#trading-proposals-propose--approve--execute) below.
 
 TradingView has no API for pulling executed trade history on standard
 accounts, so it isn't an ingestion source here — it stays your charting/alert
@@ -38,9 +42,9 @@ pip install -r requirements.txt
 
 ### 2. Get a Deriv API token
 
-1. Log in at https://app.deriv.com
+1. Log in at https://app.deriv.com — **use your demo/virtual account**, not your real-money one, until the strategy has a track record
 2. Go to Settings -> API token
-3. Create a token with **Read** scope (Trading history doesn't need Trade/Payments scopes)
+3. Create a token with **Read** and **Trade** scopes (Trade is required to place Multipliers/options orders, not just to read history)
 4. Also grab your app_id from https://developers.deriv.com/docs (or use the shared demo app_id `1089` to start)
 
 ### 3. Set up MetaApi.cloud (for MT4/MT5)
@@ -49,9 +53,9 @@ MetaTrader has no official API, so MT4/5 access goes through MetaApi.cloud,
 a broker-agnostic bridge:
 
 1. Sign up at https://metaapi.cloud
-2. Add your MT4/5 account (they ask for your broker server + login, or an
-   investor/read-only password — never your live trading password if you
-   can avoid it)
+2. Add your MT4/5 **demo/practice account** first (they ask for your broker
+   server + login and password — a real investor-only password won't work
+   here since this needs to place trades, not just read)
 3. Generate an API token from the dashboard
 4. Copy the generated `accountId` for the account you added
 
@@ -81,6 +85,48 @@ This writes `reports_out/daily_<date>.json`. Hand that file to Claude and
 ask for the report — it has everything needed (stats, rule violations,
 trend vs. the previous period) to write the narrative and format it as a
 chat artifact, Word doc, or PDF.
+
+## Trading proposals (propose -> approve -> execute)
+
+`config/strategy.yaml` defines a baseline trend-following-pullback strategy
+(price above/below both EMAs for trend, pulled back near the fast EMA,
+RSI recovering from an extreme) and which platform each instrument trades
+on. Platform matters because risk works completely differently per product:
+
+| Platform | Stop/target | How risk is capped |
+|---|---|---|
+| `mt4_mt5` | real price levels | position size sized from `risk %` and stop distance |
+| `deriv_multipliers` | monetary stop-loss/take-profit | stake = risk amount directly (Multipliers cap max loss at stake by design) |
+| `deriv_options` (Rise/Fall-style) | none — fixed duration instead | stake IS the risk, full stop; no stop-loss concept exists for these contracts |
+
+Run a scan, then review and decide on whatever it finds — nothing executes
+without an explicit decision:
+
+```bash
+python scripts/run_scan.py                    # checks every instrument in strategy.yaml, files proposals
+python scripts/decide_proposal.py --list       # see pending proposals + rationale
+python scripts/decide_proposal.py --approve 3  # executes proposal #3
+python scripts/decide_proposal.py --reject 3 --note "not liking the setup"
+```
+
+**The demo-only guard is enforced at execution time, not just in config.**
+`decide_proposal.py --approve` checks the *actual connected account* — Deriv's
+loginid prefix (`VR...` = virtual) or MetaApi's reported account type — and
+refuses to place the order if it doesn't resolve to demo/virtual. Going live
+requires passing `--live` explicitly; there's no config flag that quietly
+flips this, on purpose, since that's the kind of thing that shouldn't be
+possible to trigger by accident.
+
+**What's not done yet, on purpose:**
+- The MetaApi candle/symbol-spec/order methods (`get_candles`,
+  `get_symbol_specification`, `create_market_buy_order`, etc.) are written
+  against MetaApi's documented API shape but haven't been verified against a
+  live account or your installed SDK version — check `src/ingest/metatrader.py`
+  against a real demo run before trusting it.
+- The strategy is a conservative starting point, not a validated edge. Expect
+  to tune `config/strategy.yaml` after watching it run on demo for a while.
+- There's no backtest yet — proposals are only checked against live-fetched
+  candles going forward from whenever you start running scans.
 
 ## Scheduling
 

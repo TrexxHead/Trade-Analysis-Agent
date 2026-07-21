@@ -214,6 +214,30 @@ check the printed candle range against what you asked for. Writes the same
 `backtests_out/<symbol>_<timestamp>.json` report as `run_backtest.py`, so
 results show up in the dashboard's Backtests page either way.
 
+### Tuning per-instrument settings
+
+`config/strategy.yaml`'s shared EMA/RSI/ATR settings were arrived at for
+XAUUSD - there's no reason to assume they suit a different instrument's
+price behavior. `scripts/tune_strategy.py` backtests a grid of
+trend/entry/exit combinations for one instrument (candles pulled fresh from
+MetaApi, same as `backtest_live.py`) and ranks them by profit factor,
+instead of guessing at "reasonable-sounding" numbers:
+
+```bash
+python scripts/tune_strategy.py --symbol "Volatility 10 Index" --days 180
+```
+
+Prints a baseline (today's shared settings) alongside the top candidates,
+plus a ready-to-review override block for `config/strategy.yaml`. **This
+does not edit any config file for you and the ranking can overfit** - a
+few hundred backtests against a few months of data is enough to find
+*something* that looks good by chance, especially for candidates near
+`--min-trades` (default 15). Treat the top result as "worth watching on
+demo," not "proven" - and re-run periodically as more real history
+accumulates rather than tuning once and trusting it forever. Runs ~400+
+backtests per invocation, so expect it to take a few minutes; `--top` and
+`--min-trades` control how much is printed, not how long it takes.
+
 ## Dashboard
 
 A web dashboard reads directly from `data/trades.db` and the

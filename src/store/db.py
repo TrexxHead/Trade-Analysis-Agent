@@ -72,7 +72,7 @@ def upsert_trades(conn: sqlite3.Connection, trades: list[dict]) -> int:
             t.get("close_price"),
             t["pnl"],
             t.get("balance_after"),
-            json.dumps(t.get("raw", {})),
+            json.dumps(t.get("raw", {}), default=str),
         )
         for t in trades
     ]

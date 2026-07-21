@@ -27,8 +27,8 @@
       {% for day in week %}
       <td style="height:64px; vertical-align:top; border:1px solid var(--grid);
         {% if not day.in_month %}opacity:0.35;{% endif %}
-        {% if day.pnl and day.pnl > 0 %}background: color-mix(in srgb, var(--series-blue) {{ (day.intensity*65+10)|round|int }}%, var(--surface-1));
-        {% elif day.pnl and day.pnl < 0 %}background: color-mix(in srgb, var(--series-red) {{ (day.intensity*65+10)|round|int }}%, var(--surface-1));
+        {% if day.pnl and day.pnl > 0 %}background: color-mix(in srgb, var(--good) {{ (day.intensity*45+8)|round|int }}%, var(--surface-1));
+        {% elif day.pnl and day.pnl < 0 %}background: color-mix(in srgb, var(--critical) {{ (day.intensity*45+8)|round|int }}%, var(--surface-1));
         {% endif %}"
         title="{% if day.pnl %}{{ day.trade_count }} trade(s), {{ '%+.2f' % day.pnl }}{% endif %}">
         <div style="font-size:11px; color:var(--muted); padding:4px 6px;">{{ day.date.day }}</div>

@@ -93,20 +93,36 @@ def fetch_trades(date_from: datetime, date_to: datetime) -> list[dict]:
 
 
 # --- Everything below here (candles, symbol specs, account info, order
-# placement) uses MetaApi SDK methods based on its documented API shape.
-# Method/field names have not been verified against a live account or the
-# exact installed SDK version - do that against a demo account before
-# trusting this for real orders, and adjust names if they don't match.
+# placement) was written from MetaApi's documented API shape and has now
+# been cross-checked against the installed SDK's actual source
+# (metaapi_cloud_sdk==29.1.1). Order placement (create_market_buy_order /
+# create_market_sell_order) still hasn't been exercised against a live
+# account - verify before trusting it for real orders.
+
+# MetaApi uses lowercase timeframe strings ("1h", "4h"), not this project's
+# platform-agnostic "H1"/"H4" convention used elsewhere (config/strategy.yaml,
+# Deriv's granularity mapping) - translate here so the config stays
+# platform-agnostic.
+TIMEFRAME_MAP = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h", "H4": "4h", "D1": "1d"}
+
 
 async def _fetch_candles_async(symbol: str, timeframe: str, count: int) -> list[dict]:
     token = os.environ["METAAPI_TOKEN"]
     account_id = os.environ["METAAPI_ACCOUNT_ID"]
-    connection = await _connected_rpc(token, account_id)
-    candles = await connection.get_candles(symbol, timeframe, limit=count)
-    return [
+    api = MetaApi(token)
+    account = await api.metatrader_account_api.get_account(account_id)
+    mt_timeframe = TIMEFRAME_MAP.get(timeframe, timeframe.lower())
+    # get_historical_candles is a REST call (account.get_historical_candles),
+    # not part of the RPC connection - confirmed via source, no RPC connect/
+    # synchronize needed. Sort ascending defensively since the docs don't
+    # guarantee return order.
+    candles = await account.get_historical_candles(symbol, mt_timeframe, limit=count)
+    result = [
         {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
         for c in candles
     ]
+    result.sort(key=lambda c: c["time"])
+    return result
 
 
 def fetch_candles(symbol: str, timeframe: str, count: int) -> list[dict]:
@@ -118,9 +134,13 @@ async def _get_symbol_spec_async(symbol: str) -> dict:
     account_id = os.environ["METAAPI_ACCOUNT_ID"]
     connection = await _connected_rpc(token, account_id)
     spec = await connection.get_symbol_specification(symbol)
+    # MetatraderSymbolSpecification has no tickValue field (confirmed via
+    # source) - only tickSize and contractSize. tick_value (currency per tick
+    # per lot) = tickSize * contractSize, exact when account currency ==
+    # quote currency (true for a USD account trading XAUUSD).
     return {
         "tick_size": spec["tickSize"],
-        "tick_value": spec["tickValue"],
+        "tick_value": spec["tickSize"] * spec["contractSize"],
         "volume_step": spec.get("volumeStep", 0.01),
     }
 

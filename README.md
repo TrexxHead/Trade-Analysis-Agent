@@ -171,6 +171,40 @@ Results are written to `backtests_out/<symbol>_<timestamp>.json` and reuse
 the same stats/rule-checking code as the live reporting side, so a
 backtest's numbers are directly comparable to what a real report would show.
 
+## Dashboard (local only)
+
+A local web dashboard reads directly from `data/trades.db` and the
+`reports_out`/`backtests_out` JSON files - it doesn't compute anything new,
+it just presents what the rest of this repo already produces.
+
+```bash
+python scripts/run_dashboard.py            # http://127.0.0.1:5000
+python scripts/run_dashboard.py --port 8080
+```
+
+It binds to `127.0.0.1` only, on purpose - this serves your trade history
+and P&L, so it isn't meant to be reachable from anywhere but your own
+machine. There's no authentication, because there's no network exposure to
+authenticate against.
+
+Pages:
+- **Overview** - total P&L, win rate, profit factor, max drawdown, an
+  equity curve, and your top mistake categories at a glance.
+- **Calendar** - a monthly P&L heatmap (blue = profit, red = loss, shade
+  = magnitude), the same "how's this month going" view a trading journal
+  gives you.
+- **Trades** - the full trade history, filterable by source (Deriv / MT4-5).
+- **Mistakes** - rule violations from `config/rules.yaml`, by rule and by
+  trade - this is the "learn from mistakes" half of the project made
+  visible rather than buried in a database.
+- **Backtests** - every `run_backtest.py` result, with drill-down into the
+  individual simulated trades behind each summary.
+- **Proposals** - pending/executed/rejected trade proposals from the
+  propose-approve-execute workflow above.
+
+Since it reads the same `data/trades.db` that `run_ingest.py` writes to,
+it updates automatically after each ingestion run - no separate sync step.
+
 ## Scheduling
 
 Once ingestion is verified working end-to-end, the daily/weekly/monthly

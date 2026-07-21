@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ filename }} - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>{{ data.symbol }} - {{ filename }}</h1>
+<a href="/backtests" class="pill muted">&larr; all backtests</a>
+
+<div class="stat-grid" style="margin-top:16px;">
+  <div class="stat-tile"><div class="label">Trades</div><div class="value">{{ data.stats.total_trades }}</div></div>
+  <div class="stat-tile"><div class="label">Win rate</div><div class="value">{{ '%.1f%%' % (data.stats.win_rate * 100) if data.stats.win_rate is not none else '—' }}</div></div>
+  <div class="stat-tile"><div class="label">Profit factor</div><div class="value">{{ '%.2f' % data.stats.profit_factor if data.stats.profit_factor is not none else '—' }}</div></div>
+  <div class="stat-tile"><div class="label">Max drawdown</div><div class="value neg">{{ '%.2f' % data.stats.max_drawdown if data.stats.max_drawdown is not none else '—' }}</div></div>
+  <div class="stat-tile"><div class="label">Ending balance</div><div class="value">{{ '%.2f' % data.ending_balance }}</div></div>
+</div>
+
+<h2>Mistake counts</h2>
+<div class="card">
+  {% if data.mistake_counts %}
+  <table>
+    <thead><tr><th>Rule</th><th>Count</th></tr></thead>
+    <tbody>
+      {% for rule_id, count in data.mistake_counts.items() %}
+      <tr><td>{{ rule_id }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">None.</div>
+  {% endif %}
+</div>
+
+<h2>Trades</h2>
+<div class="card">
+{% if data.trades %}
+<table>
+  <thead><tr><th>Closed</th><th>Dir</th><th>Open</th><th>Close</th><th>P&amp;L</th><th>Balance after</th></tr></thead>
+  <tbody>
+    {% for t in data.trades %}
+    <tr>
+      <td>{{ t.close_time[:16].replace('T',' ') }}</td>
+      <td>{{ t.direction }}</td>
+      <td>{{ '%.5g' % t.open_price }}</td>
+      <td>{{ '%.5g' % t.close_price }}</td>
+      <td class="{{ 'pos' if t.pnl >= 0 else 'neg' }}">{{ '%+.2f' % t.pnl }}</td>
+      <td>{{ '%.2f' % t.balance_after }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No completed trades in this run.</div>
+{% endif %}
+</div>
+{% endblock %}

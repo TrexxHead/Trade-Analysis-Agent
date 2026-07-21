@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Calendar - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>P&amp;L Calendar</h1>
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+  <a href="/calendar?year={{ prev_year }}&month={{ prev_month }}" class="pill muted">&larr; prev</a>
+  <div style="text-align:center;">
+    <div style="font-weight:600; font-size:16px;">{{ month_name }} {{ year }}</div>
+    <div class="{{ 'pos' if month_total >= 0 else 'neg' }}" style="font-size:13px;">{{ '%+.2f' % month_total }}</div>
+  </div>
+  <a href="/calendar?year={{ next_year }}&month={{ next_month }}" class="pill muted">next &rarr;</a>
+</div>
+
+<div class="card">
+<table style="table-layout:fixed;">
+  <thead>
+    <tr>
+      {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+      <th style="text-align:center;">{{ d }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in grid %}
+    <tr>
+      {% for day in week %}
+      <td style="height:64px; vertical-align:top; border:1px solid var(--grid);
+        {% if not day.in_month %}opacity:0.35;{% endif %}
+        {% if day.pnl and day.pnl > 0 %}background: color-mix(in srgb, var(--series-blue) {{ (day.intensity*65+10)|round|int }}%, var(--surface-1));
+        {% elif day.pnl and day.pnl < 0 %}background: color-mix(in srgb, var(--series-red) {{ (day.intensity*65+10)|round|int }}%, var(--surface-1));
+        {% endif %}"
+        title="{% if day.pnl %}{{ day.trade_count }} trade(s), {{ '%+.2f' % day.pnl }}{% endif %}">
+        <div style="font-size:11px; color:var(--muted); padding:4px 6px;">{{ day.date.day }}</div>
+        {% if day.pnl %}
+        <div style="font-size:12px; font-weight:600; text-align:center; {{ 'pos' if day.pnl >= 0 else 'neg' }}">{{ '%+.0f' % day.pnl }}</div>
+        <div style="font-size:10px; color:var(--muted); text-align:center;">{{ day.trade_count }} trade{{ 's' if day.trade_count != 1 }}</div>
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

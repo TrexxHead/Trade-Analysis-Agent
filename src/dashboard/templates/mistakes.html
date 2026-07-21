@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Mistakes - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Mistakes</h1>
+
+<h2>By rule</h2>
+<div class="card">
+  {% if counts %}
+  <table>
+    <thead><tr><th>Rule</th><th>Count</th></tr></thead>
+    <tbody>
+      {% for rule_id, count in counts %}
+      <tr><td>{{ rule_id }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No rule violations recorded - either the plan is being followed, or no trades have been checked yet.</div>
+  {% endif %}
+</div>
+
+<h2>Flagged trades</h2>
+<div class="card">
+  {% if flags %}
+  <table>
+    <thead><tr><th>Closed</th><th>Symbol</th><th>Source</th><th>Rule</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for f in flags %}
+      <tr>
+        <td>{{ f.close_time[:16].replace('T',' ') }}</td>
+        <td>{{ f.symbol }}</td>
+        <td>{{ f.source }}</td>
+        <td><span class="pill critical">{{ f.rule_id }}</span></td>
+        <td>{{ f.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Nothing flagged yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

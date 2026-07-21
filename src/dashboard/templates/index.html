@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Overview - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Overview</h1>
+
+{% if trade_count == 0 %}
+<div class="card empty">No trades ingested yet. Run <code>scripts/run_ingest.py</code> to pull history from Deriv/MetaApi.</div>
+{% else %}
+<div class="stat-grid">
+  <div class="stat-tile">
+    <div class="label">Total P&amp;L</div>
+    <div class="value {{ 'pos' if stats.total_pnl >= 0 else 'neg' }}">{{ '%+.2f' % stats.total_pnl }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Win rate</div>
+    <div class="value">{{ '%.1f' % (stats.win_rate * 100) }}%</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Profit factor</div>
+    <div class="value">{{ '%.2f' % stats.profit_factor if stats.profit_factor is not none else '—' }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Max drawdown</div>
+    <div class="value neg">{{ '%.2f' % stats.max_drawdown }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Trades</div>
+    <div class="value">{{ stats.total_trades }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Pending proposals</div>
+    <div class="value">{{ pending_proposals }}</div>
+  </div>
+</div>
+
+<h2>Equity curve</h2>
+<div class="card">
+  {% if equity.points %}
+  <svg viewBox="0 0 {{ equity.width }} {{ equity.height }}" width="100%" height="180" preserveAspectRatio="none" style="overflow:visible">
+    <line x1="0" y1="{{ equity.height - 10 }}" x2="{{ equity.width }}" y2="{{ equity.height - 10 }}" stroke="var(--baseline)" stroke-width="1" />
+    <polyline points="{{ equity.points }}" fill="none" stroke="var(--series-blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    {% for h in equity.hover %}
+    <circle cx="{{ h.x }}" cy="{{ h.y }}" r="6" fill="transparent" stroke="none">
+      <title>{{ h.label }}</title>
+    </circle>
+    {% endfor %}
+  </svg>
+  <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:4px;">
+    <span>min {{ '%.2f' % equity.min_val }}</span>
+    <span>max {{ '%.2f' % equity.max_val }}</span>
+  </div>
+  {% else %}
+  <div class="empty">Not enough trades yet for an equity curve.</div>
+  {% endif %}
+</div>
+
+<h2>Top mistakes</h2>
+<div class="card">
+  {% if mistake_counts %}
+  <table>
+    <thead><tr><th>Rule</th><th>Count</th></tr></thead>
+    <tbody>
+      {% for rule_id, count in mistake_counts %}
+      <tr><td>{{ rule_id }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No rule violations recorded.</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

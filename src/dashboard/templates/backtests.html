@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Backtests - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Backtests</h1>
+
+<div class="card">
+{% if runs %}
+<table>
+  <thead>
+    <tr><th>Symbol</th><th>Range</th><th>Trades</th><th>Win rate</th><th>Profit factor</th><th>Result</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr>
+      <td>{{ r.symbol }}</td>
+      <td>{{ r.range.start[:10] if r.range.start else '—' }} &rarr; {{ r.range.end[:10] if r.range.end else '—' }}</td>
+      <td>{{ r.stats.total_trades }}</td>
+      <td>{{ '%.1f%%' % (r.stats.win_rate * 100) if r.stats.win_rate is not none else '—' }}</td>
+      <td>{{ '%.2f' % r.stats.profit_factor if r.stats.profit_factor is not none else '—' }}</td>
+      <td class="{{ 'pos' if r.ending_balance >= r.starting_balance else 'neg' }}">
+        {{ '%+.2f' % (r.ending_balance - r.starting_balance) }}
+      </td>
+      <td><a href="/backtests/{{ r.filename }}" class="pill muted">view</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No backtests run yet. Try <code>scripts/run_backtest.py</code>.</div>
+{% endif %}
+</div>
+{% endblock %}

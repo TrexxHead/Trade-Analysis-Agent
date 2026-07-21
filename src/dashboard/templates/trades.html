@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Trades - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Trades</h1>
+
+<div style="margin-bottom:16px; display:flex; gap:6px;">
+  <a href="/trades" class="pill {{ 'muted' if source else 'good' }}">All</a>
+  <a href="/trades?source=deriv" class="pill {{ 'good' if source == 'deriv' else 'muted' }}">Deriv</a>
+  <a href="/trades?source=mt4_mt5" class="pill {{ 'good' if source == 'mt4_mt5' else 'muted' }}">MT4/5</a>
+</div>
+
+<div class="card">
+{% if trades %}
+<table>
+  <thead>
+    <tr>
+      <th>Closed</th><th>Source</th><th>Symbol</th><th>Dir</th>
+      <th>Volume</th><th>Open</th><th>Close</th><th>P&amp;L</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in trades %}
+    <tr>
+      <td>{{ t.close_time[:16].replace('T',' ') }}</td>
+      <td>{{ t.source }}</td>
+      <td>{{ t.symbol }}</td>
+      <td>{{ t.direction }}</td>
+      <td>{{ t.volume }}</td>
+      <td>{{ '%.5g' % t.open_price if t.open_price is not none else '—' }}</td>
+      <td>{{ '%.5g' % t.close_price if t.close_price is not none else '—' }}</td>
+      <td class="{{ 'pos' if t.pnl >= 0 else 'neg' }}">{{ '%+.2f' % t.pnl }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No trades match this filter.</div>
+{% endif %}
+</div>
+{% endblock %}

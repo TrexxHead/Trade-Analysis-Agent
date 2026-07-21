@@ -135,9 +135,17 @@ outbound network access, `scripts/run_backtest.py` lets the baseline
 strategy be validated against historical data instead - useful while that's
 being sorted out, and worth doing before going live either way.
 
-Export candles from your MT4/5 terminal (Tools -> History Center in MT4,
-`F2` in MT5 - pick the symbol, a timeframe matching `config/strategy.yaml`'s
-`timeframe` (H1 by default), export to CSV), then:
+Export candles from either MT4/5 or TradingView:
+
+- **MT4**: Tools -> History Center, pick the symbol + a timeframe matching
+  `config/strategy.yaml`'s `timeframe` (H1 by default), Export to CSV.
+- **MT5**: `F2` (View -> History Center), same idea, Export Bars.
+- **TradingView**: right-click the chart -> Export chart data (Pro plans
+  and above). Set the chart to the matching timeframe first - the export
+  only grabs whatever's currently loaded on the chart, which caps how much
+  history you get depending on your plan.
+
+Then:
 
 ```bash
 python scripts/run_backtest.py \

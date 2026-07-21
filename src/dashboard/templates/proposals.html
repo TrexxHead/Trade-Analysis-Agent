@@ -3,6 +3,16 @@
 {% block content %}
 <h1>Trade Proposals</h1>
 
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div style="margin-bottom:16px; display:flex; flex-direction:column; gap:6px;">
+    {% for category, message in messages %}
+    <div class="pill {{ category }}" style="width:fit-content;">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+
 <div style="margin-bottom:16px; display:flex; gap:6px;">
   <a href="/proposals" class="pill {{ 'muted' if status else 'good' }}">All</a>
   <a href="/proposals?status=pending" class="pill {{ 'warning' if status == 'pending' else 'muted' }}">Pending</a>
@@ -13,7 +23,7 @@
 <div class="card">
 {% if proposals %}
 <table>
-  <thead><tr><th>Created</th><th>Platform</th><th>Symbol</th><th>Dir</th><th>Status</th><th>Rationale</th></tr></thead>
+  <thead><tr><th>Created</th><th>Platform</th><th>Symbol</th><th>Dir</th><th>Status</th><th>Details</th><th>Actions</th></tr></thead>
   <tbody>
     {% for p in proposals %}
     <tr>
@@ -27,7 +37,31 @@
         {% elif p.status == 'rejected' %}<span class="pill critical">rejected</span>
         {% else %}<span class="pill muted">{{ p.status }}</span>{% endif %}
       </td>
-      <td style="max-width:360px; font-size:12px; color:var(--text-secondary);">{{ p.rationale }}</td>
+      <td style="max-width:340px; font-size:12px; color:var(--text-secondary);">
+        {{ p.rationale }}<br>
+        {% if p.order_spec.entry %}entry {{ '%.5g' % p.order_spec.entry }}{% endif %}
+        {% if p.order_spec.stop %} &middot; stop {{ '%.5g' % p.order_spec.stop }}{% endif %}
+        {% if p.order_spec.target %} &middot; target {{ '%.5g' % p.order_spec.target }}{% endif %}
+        {% if p.order_spec.volume %} &middot; vol {{ p.order_spec.volume }}{% endif %}
+        {% if p.order_spec.stake %} &middot; stake {{ p.order_spec.stake }}{% endif %}
+      </td>
+      <td>
+        {% if p.status == 'pending' %}
+        <div style="display:flex; gap:6px;">
+          <form method="post" action="/proposals/{{ p.id }}/approve" onsubmit="return confirm('Execute this trade on your demo account?');">
+            <button type="submit" class="pill good" style="border:none; cursor:pointer; font:inherit;">Approve</button>
+          </form>
+          <form method="post" action="/proposals/{{ p.id }}/reject">
+            <button type="submit" class="pill critical" style="border:none; cursor:pointer; font:inherit;">Reject</button>
+          </form>
+        </div>
+        {% else %}
+        <span style="color:var(--muted); font-size:12px;">
+          {% if p.executed_order_id %}order {{ p.executed_order_id }}{% endif %}
+          {% if p.decision_note %}{{ p.decision_note }}{% endif %}
+        </span>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>

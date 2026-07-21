@@ -1,27 +1,48 @@
-"""Local-only dashboard: overview stats, a P&L calendar, trade/mistake/
-backtest/proposal tables. Reads directly from data/trades.db and the
-reports_out/backtests_out JSON files - it doesn't compute anything the
-rest of this repo doesn't already compute, it just presents it.
+"""Dashboard: overview stats, a P&L calendar, trade/mistake/backtest/proposal
+tables, with approve/reject actions on pending proposals. Reads directly
+from data/trades.db and the reports_out/backtests_out JSON files - it
+doesn't compute anything the rest of this repo doesn't already compute, it
+just presents it (and now, executes approve/reject decisions directly).
 
-Run via scripts/run_dashboard.py. Binds to 127.0.0.1 only - this holds
-account balances and trade history, so it's not meant to be exposed
-beyond your own machine.
+Run via scripts/run_dashboard.py, which binds to 127.0.0.1 only - if you're
+exposing this beyond your own machine (e.g. via a tunnel like ngrok), set
+DASHBOARD_PASSWORD in .env first. Without it, anyone who reaches this page
+can see your trade history and approve/reject real orders.
 """
 import calendar as calendar_module
 import json
+import os
+import secrets
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flask import Flask, render_template, request
+from flask import Flask, Response, flash, redirect, render_template, request, url_for
 
 from src.analysis.metrics import compute_period_stats
 from src.store.db import get_connection, get_flags, get_trades, list_proposals
+from src.strategy.execution import execute_proposal, reject_proposal
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORTS_DIR = ROOT / "reports_out"
 BACKTESTS_DIR = ROOT / "backtests_out"
 
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
+
 app = Flask(__name__)
+app.secret_key = secrets.token_hex(16)  # only used for one-request flash messages, not real sessions
+
+
+@app.before_request
+def _require_password():
+    if not DASHBOARD_PASSWORD:
+        return None  # no password configured - fine for pure localhost use, not for exposing this remotely
+    auth = request.authorization
+    if not auth or auth.password != DASHBOARD_PASSWORD:
+        return Response(
+            "Password required.", 401, {"WWW-Authenticate": 'Basic realm="Trade Analysis Agent"'}
+        )
+    return None
 
 
 def _parse_time(iso: str) -> datetime:
@@ -195,3 +216,32 @@ def proposals_view():
     for p in proposals:
         p["order_spec"] = json.loads(p["order_spec_json"])
     return render_template("proposals.html", active="proposals", proposals=proposals, status=status)
+
+
+@app.route("/proposals/<int:proposal_id>/approve", methods=["POST"])
+def approve_proposal_route(proposal_id):
+    conn = _conn()
+    try:
+        # Always demo-gated from the dashboard, on purpose - going live is a
+        # deliberate CLI action (decide_proposal.py --live), not a button
+        # that's one click away in a web UI.
+        result = execute_proposal(conn, proposal_id, require_demo=True)
+        order_id = result.get("orderId") or result.get("contract_id") or result.get("positionId")
+        flash(f"Proposal #{proposal_id} executed (order {order_id}).", "good")
+    except Exception as e:
+        print(f"Failed to execute proposal #{proposal_id}: {e}", file=sys.stderr)
+        flash(f"Proposal #{proposal_id} failed to execute: {e}", "critical")
+    return redirect(url_for("proposals_view"))
+
+
+@app.route("/proposals/<int:proposal_id>/reject", methods=["POST"])
+def reject_proposal_route(proposal_id):
+    conn = _conn()
+    note = request.form.get("note") or None
+    try:
+        reject_proposal(conn, proposal_id, note=note)
+        flash(f"Proposal #{proposal_id} rejected.", "muted")
+    except Exception as e:
+        print(f"Failed to reject proposal #{proposal_id}: {e}", file=sys.stderr)
+        flash(f"Proposal #{proposal_id} failed to reject: {e}", "critical")
+    return redirect(url_for("proposals_view"))

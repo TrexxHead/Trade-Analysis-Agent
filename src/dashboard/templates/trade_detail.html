@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Trade {{ trade.id }} - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Trade {{ trade.id }}</h1>
+<a href="/trades" class="pill muted">&larr; all trades</a>
+
+<div class="stat-grid" style="margin-top:16px;">
+  <div class="stat-tile"><div class="label">Symbol</div><div class="value">{{ trade.symbol }}</div></div>
+  <div class="stat-tile"><div class="label">Direction</div><div class="value">{{ trade.direction }}</div></div>
+  <div class="stat-tile"><div class="label">P&amp;L</div><div class="value {{ 'pos' if trade.pnl >= 0 else 'neg' }}">{{ '%+.2f' % trade.pnl }}</div></div>
+  <div class="stat-tile"><div class="label">Closed</div><div class="value" style="font-size:14px;">{{ trade.close_time[:16].replace('T',' ') }}</div></div>
+</div>
+
+<h2>Your notes</h2>
+<div class="card">
+<form method="post">
+  <label for="setup">Setup / strategy tag</label>
+  <input type="text" id="setup" name="setup" value="{{ trade.setup or '' }}" placeholder="e.g. pullback, breakout, confluence-reversal">
+
+  <label for="emotion">Emotional state</label>
+  <select id="emotion" name="emotion">
+    <option value="" {{ 'selected' if not trade.emotion }}>—</option>
+    {% for e in ['calm', 'confident', 'anxious', 'impulsive', 'fearful', 'frustrated', 'fomo'] %}
+    <option value="{{ e }}" {{ 'selected' if trade.emotion == e }}>{{ e }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="risk_amount">Planned risk amount ($) - enables R-multiple stats for this trade</label>
+  <input type="number" step="any" id="risk_amount" name="risk_amount" value="{{ trade.risk_amount or '' }}" placeholder="e.g. 100">
+
+  <label for="notes">Notes</label>
+  <textarea id="notes" name="notes" placeholder="Why did you take this? What did you see? What would you do differently?">{{ trade.notes or '' }}</textarea>
+
+  <div style="margin-top:16px;">
+    <button type="submit" class="pill good" style="border:none; cursor:pointer; font:inherit;">Save</button>
+  </div>
+</form>
+</div>
+{% endblock %}

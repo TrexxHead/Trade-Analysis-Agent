@@ -31,7 +31,29 @@
     <div class="label">Pending proposals</div>
     <div class="value">{{ pending_proposals }}</div>
   </div>
+  {% if r_stats.annotated_trades %}
+  <div class="stat-tile">
+    <div class="label">Expectancy ({{ r_stats.annotated_trades }} tagged)</div>
+    <div class="value {{ 'pos' if r_stats.expectancy_r >= 0 else 'neg' }}">{{ '%+.2fR' % r_stats.expectancy_r }}</div>
+  </div>
+  {% endif %}
 </div>
+
+{% if daily_loss %}
+<h2>Today's risk budget</h2>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <span style="font-size:13px; color:var(--text-secondary);">
+      {{ '%+.2f' % daily_loss.pnl }} today &middot; {{ '%.1f' % daily_loss.loss_pct }}% of balance
+      (limit {{ daily_loss.max_pct }}%)
+    </span>
+    <span class="pill {{ daily_loss.status }}">{{ '%.0f' % daily_loss.pct_of_limit }}% of limit used</span>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill {{ daily_loss.status }}" style="width: {{ daily_loss.pct_of_limit }}%;"></div>
+  </div>
+</div>
+{% endif %}
 
 <h2>Equity curve</h2>
 <div class="card">

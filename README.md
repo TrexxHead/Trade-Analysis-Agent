@@ -186,14 +186,28 @@ python scripts/run_dashboard.py --port 8080
 It binds to `127.0.0.1` by default - reachable only from the machine it's
 running on. Pages:
 - **Overview** - total P&L, win rate, profit factor, max drawdown, an
-  equity curve, and your top mistake categories at a glance.
+  equity curve, expectancy in R (once trades are tagged - see below), your
+  top mistake categories, and a live daily-loss-limit progress bar
+  (color-coded green/orange/red the same way prop-firm dashboards do,
+  warning before you breach `config/rules.yaml`'s `max_daily_loss_pct`,
+  not after).
 - **Calendar** - a monthly P&L heatmap (blue = profit, red = loss, shade
   = magnitude), the same "how's this month going" view a trading journal
   gives you.
 - **Trades** - the full trade history, filterable by source (Deriv / MT4-5).
+  Click into any trade to tag it with a **setup**, an **emotional state**,
+  a **planned risk amount**, and free-text **notes** - this is what feeds
+  R-multiple stats and the breakdowns below, and it's the one piece of
+  "learn from mistakes" that can't be inferred automatically: what you were
+  actually thinking.
 - **Mistakes** - rule violations from `config/rules.yaml`, by rule and by
-  trade - this is the "learn from mistakes" half of the project made
-  visible rather than buried in a database.
+  trade. Now includes `daily_loss_limit_breached` and `oversize_risk` (the
+  latter only for trades you've tagged with a risk amount) - both were
+  stubbed out until real balance data existed to check them against.
+- **Insights** - R-multiple/expectancy stats, and performance broken down
+  by hour of day, day of week, tagged setup ("playbook"), and tagged
+  emotional state - the standard cuts for finding where an edge actually
+  lives versus where it's quietly leaking, per `docs/dashboard_feature_research.md`.
 - **Backtests** - every `run_backtest.py` result, with drill-down into the
   individual simulated trades behind each summary.
 - **Proposals** - pending/executed/rejected trade proposals, with

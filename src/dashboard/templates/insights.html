@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Insights - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Insights</h1>
+
+{% if trade_count == 0 %}
+<div class="card empty">No trades ingested yet.</div>
+{% else %}
+
+<h2>R-multiple / expectancy</h2>
+<div class="card">
+  {% if r_stats.annotated_trades %}
+  <div class="stat-grid">
+    <div class="stat-tile"><div class="label">Tagged trades</div><div class="value">{{ r_stats.annotated_trades }}</div></div>
+    <div class="stat-tile"><div class="label">Avg R</div><div class="value {{ 'pos' if r_stats.avg_r >= 0 else 'neg' }}">{{ '%+.2f' % r_stats.avg_r }}</div></div>
+    <div class="stat-tile"><div class="label">Avg win R</div><div class="value pos">{{ '%+.2f' % r_stats.avg_win_r }}</div></div>
+    <div class="stat-tile"><div class="label">Avg loss R</div><div class="value neg">{{ '%+.2f' % r_stats.avg_loss_r }}</div></div>
+    <div class="stat-tile"><div class="label">Expectancy</div><div class="value {{ 'pos' if r_stats.expectancy_r >= 0 else 'neg' }}">{{ '%+.2fR' % r_stats.expectancy_r }}</div></div>
+  </div>
+  {% else %}
+  <div class="empty">No trades have a planned risk amount tagged yet - open a trade from the Trades page and set one to see R-multiple stats.</div>
+  {% endif %}
+</div>
+
+<h2>By hour of day (UTC)</h2>
+<div class="card">
+  {% if by_hour %}
+  <table>
+    <thead><tr><th>Hour</th><th>Trades</th><th>Win rate</th><th>Total P&amp;L</th><th>Profit factor</th></tr></thead>
+    <tbody>
+      {% for row in by_hour %}
+      <tr>
+        <td>{{ '%02d:00' % row.key }}</td>
+        <td>{{ row.total_trades }}</td>
+        <td>{{ '%.0f%%' % (row.win_rate * 100) }}</td>
+        <td class="{{ 'pos' if row.total_pnl >= 0 else 'neg' }}">{{ '%+.2f' % row.total_pnl }}</td>
+        <td>{{ '%.2f' % row.profit_factor if row.profit_factor is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">Not enough data.</div>{% endif %}
+</div>
+
+<h2>By day of week</h2>
+<div class="card">
+  {% if by_weekday %}
+  <table>
+    <thead><tr><th>Day</th><th>Trades</th><th>Win rate</th><th>Total P&amp;L</th><th>Profit factor</th></tr></thead>
+    <tbody>
+      {% for row in by_weekday %}
+      <tr>
+        <td>{{ row.key }}</td>
+        <td>{{ row.total_trades }}</td>
+        <td>{{ '%.0f%%' % (row.win_rate * 100) }}</td>
+        <td class="{{ 'pos' if row.total_pnl >= 0 else 'neg' }}">{{ '%+.2f' % row.total_pnl }}</td>
+        <td>{{ '%.2f' % row.profit_factor if row.profit_factor is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">Not enough data.</div>{% endif %}
+</div>
+
+<h2>By setup (playbook)</h2>
+<div class="card">
+  {% if by_setup %}
+  <table>
+    <thead><tr><th>Setup</th><th>Trades</th><th>Win rate</th><th>Total P&amp;L</th><th>Profit factor</th></tr></thead>
+    <tbody>
+      {% for row in by_setup %}
+      <tr>
+        <td>{{ row.key }}</td>
+        <td>{{ row.total_trades }}</td>
+        <td>{{ '%.0f%%' % (row.win_rate * 100) }}</td>
+        <td class="{{ 'pos' if row.total_pnl >= 0 else 'neg' }}">{{ '%+.2f' % row.total_pnl }}</td>
+        <td>{{ '%.2f' % row.profit_factor if row.profit_factor is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No trades tagged with a setup yet - tag some from the Trades page.</div>{% endif %}
+</div>
+
+<h2>By emotional state</h2>
+<div class="card">
+  {% if by_emotion %}
+  <table>
+    <thead><tr><th>Emotion</th><th>Trades</th><th>Win rate</th><th>Total P&amp;L</th><th>Profit factor</th></tr></thead>
+    <tbody>
+      {% for row in by_emotion %}
+      <tr>
+        <td>{{ row.key }}</td>
+        <td>{{ row.total_trades }}</td>
+        <td>{{ '%.0f%%' % (row.win_rate * 100) }}</td>
+        <td class="{{ 'pos' if row.total_pnl >= 0 else 'neg' }}">{{ '%+.2f' % row.total_pnl }}</td>
+        <td>{{ '%.2f' % row.profit_factor if row.profit_factor is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No trades tagged with an emotional state yet - tag some from the Trades page.</div>{% endif %}
+</div>
+
+{% endif %}
+{% endblock %}

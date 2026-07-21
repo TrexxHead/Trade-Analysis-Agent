@@ -3,73 +3,119 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Trade Analysis Agent{% endblock %}</title>
+<title>{% block title %}Kora Terminal{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Jost:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    color-scheme: light;
-    --surface-1:      #fcfcfb;
-    --page:           #f9f9f7;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --muted:          #898781;
-    --grid:           #e1e0d9;
-    --baseline:       #c3c2b7;
-    --border:         rgba(11,11,11,0.10);
-    --good:           #0ca30c;
-    --critical:       #d03b3b;
-    --warning:        #fab219;
-    --series-blue:    #2a78d6;
-    --series-red:     #e34948;
-    --success-text:   #006300;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --surface-1:      #1a1a19;
-      --page:           #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --muted:          #898781;
-      --grid:           #2c2c2a;
-      --baseline:       #383835;
-      --border:         rgba(255,255,255,0.10);
-      --good:           #0ca30c;
-      --critical:       #e66767;
-      --warning:        #fab219;
-      --series-blue:    #3987e5;
-      --series-red:     #e66767;
-      --success-text:   #0ca30c;
-    }
+    color-scheme: dark;
+    --font-display: 'Montserrat', system-ui, sans-serif;
+    --font-body:    'Jost', system-ui, sans-serif;
+    --font-mono:    'IBM Plex Mono', ui-monospace, Menlo, monospace;
+
+    --bg-app:     #121d18;
+    --bg-sidebar: #0f1a14;
+    --bg-panel:   #1b2a23;
+    --bg-sunk:    #16231d;
+    --border:     rgba(255,255,255,.07);
+    --border-soft:rgba(255,255,255,.1);
+
+    --text-primary: #e6ede9;
+    --text-heading: #ffffff;
+    --text-muted:   rgba(230,237,233,.55);
+    --text-faint:   rgba(230,237,233,.42);
+
+    --good:     #93c93f;
+    --critical: #e0655f;
+    --warning:  #fdb813;
+    --info:     #29abe2;
+    --gold:     #c0821c;
+
+    --surface-1: var(--bg-panel);
+    --page:      var(--bg-app);
+    --text-secondary: var(--text-muted);
+    --muted:     var(--text-faint);
+    --grid:      rgba(255,255,255,.08);
+    --success-text: var(--good);
+    --baseline:    rgba(255,255,255,.18);
+    --series-blue: var(--info);
+    --series-red:  var(--critical);
+
+    --ease-standard: cubic-bezier(.4,0,.2,1);
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--page);
+    font-family: var(--font-body);
+    background: var(--bg-app);
     color: var(--text-primary);
   }
-  a { color: inherit; }
-  nav {
+  a { color: var(--good); text-decoration: none; }
+  a:hover { color: #aed968; }
+
+  .shell { display: flex; height: 100vh; overflow: hidden; }
+
+  .sidebar {
+    width: 232px;
+    flex: none;
     display: flex;
-    gap: 4px;
-    padding: 12px 20px;
-    background: var(--surface-1);
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
+    flex-direction: column;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    padding: 18px 12px 14px;
+    overflow-y: auto;
   }
-  nav a {
-    padding: 8px 14px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
+  .brand-word { font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: .16em; color: var(--text-heading); }
+  .brand-sub  { font-family: var(--font-display); font-weight: 600; font-size: 9.5px; letter-spacing: .18em; color: var(--text-faint); }
+
+  .sidenav { display: flex; flex-direction: column; gap: 3px; }
+  .sidenav a {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px; border-radius: 11px;
+    font-family: var(--font-display); font-weight: 600; font-size: 13px;
+    color: var(--text-muted);
+    transition: background .14s var(--ease-standard), color .14s var(--ease-standard);
   }
-  nav a.active { background: var(--grid); color: var(--text-primary); }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
-  h1 { font-size: 20px; margin: 0 0 20px; }
-  h2 { font-size: 15px; color: var(--text-secondary); font-weight: 600; margin: 32px 0 12px; }
+  .sidenav a:hover { background: rgba(255,255,255,.04); color: var(--text-primary); }
+  .sidenav a.active { background: rgba(147,201,63,.12); color: var(--good); }
+  .sidenav .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: none; opacity: .8; }
+
+  .sidebar-account { margin-top: auto; padding-top: 14px; }
+  .sidebar-account .box {
+    background: rgba(255,255,255,.045);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 12px 13px;
+  }
+  .sidebar-account .row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .sidebar-account .led { width: 7px; height: 7px; border-radius: 999px; background: var(--good); }
+  .sidebar-account .label { font-size: 11px; color: var(--text-muted); }
+  .sidebar-account .balance { font-family: var(--font-mono); font-weight: 600; font-size: 18px; color: var(--text-heading); }
+
+  .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  header.topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(15,26,20,.8);
+    backdrop-filter: blur(10px);
+    flex-wrap: wrap;
+  }
+  header.topbar h1 { font-family: var(--font-display); font-weight: 700; font-size: 16px; margin: 0; color: var(--text-heading); }
+  header.topbar .subtitle { margin: 1px 0 0; font-size: 11px; color: var(--text-faint); }
+  .topbar-stats { margin-left: auto; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .topbar-stat { text-align: right; }
+  .topbar-stat .label { font-size: 9.5px; letter-spacing: .12em; font-family: var(--font-display); font-weight: 600; color: var(--text-faint); }
+  .topbar-stat .value { font-family: var(--font-mono); font-weight: 600; font-size: 14px; color: var(--text-primary); }
+  .topbar-clock { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+
+  main { flex: 1; overflow-y: auto; padding: 24px 26px 60px; }
+  h1 { font-size: 20px; margin: 0 0 20px; color: var(--text-heading); font-family: var(--font-display); }
+  h2 { font-size: 15px; color: var(--text-muted); font-weight: 600; margin: 32px 0 12px; font-family: var(--font-display); }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td {
     text-align: left;
@@ -77,62 +123,159 @@
     border-bottom: 1px solid var(--grid);
     font-variant-numeric: tabular-nums;
   }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  th { color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; font-family: var(--font-display); }
+
   .card {
-    background: var(--surface-1);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 16px;
   }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 8px; }
-  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
-  .stat-tile .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .stat-tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .pos { color: var(--success-text); }
+  .stat-tile { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
+  .stat-tile .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; font-family: var(--font-mono); color: var(--text-primary); }
+
+  .pos { color: var(--good); }
   .neg { color: var(--critical); }
+
   .pill {
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500;
+    padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500;
   }
-  .pill.good { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
-  .pill.critical { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical); }
-  .pill.warning { background: color-mix(in srgb, var(--warning) 20%, transparent); color: #8a5a00; }
-  .pill.muted { background: var(--grid); color: var(--text-secondary); }
-  .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
-  .progress-track { background: var(--grid); border-radius: 999px; height: 10px; overflow: hidden; }
+  .pill.good { background: rgba(147,201,63,.15); color: var(--good); }
+  .pill.critical { background: rgba(224,101,95,.15); color: var(--critical); }
+  .pill.warning { background: rgba(253,184,19,.18); color: var(--warning); }
+  .pill.muted { background: rgba(255,255,255,.06); color: var(--text-muted); }
+
+  .empty { color: var(--text-muted); font-size: 13px; padding: 24px 0; text-align: center; }
+
+  .progress-track { background: var(--bg-sunk); border-radius: 999px; height: 10px; overflow: hidden; }
   .progress-fill { height: 100%; border-radius: 999px; }
   .progress-fill.good { background: var(--good); }
   .progress-fill.warning { background: var(--warning); }
   .progress-fill.critical { background: var(--critical); }
-  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 14px; }
+
+  label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; margin-top: 14px; }
   input[type="text"], input[type="number"], textarea, select {
-    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
-    background: var(--page); color: var(--text-primary); font: inherit; font-size: 13px;
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-soft);
+    background: var(--bg-sunk); color: var(--text-primary); font: inherit; font-size: 13px;
   }
   textarea { min-height: 80px; resize: vertical; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 99px; }
 </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="{{ 'active' if active == 'index' }}">Overview</a>
-  <a href="/calendar" class="{{ 'active' if active == 'calendar' }}">Calendar</a>
-  <a href="/trades" class="{{ 'active' if active == 'trades' }}">Trades</a>
-  <a href="/mistakes" class="{{ 'active' if active == 'mistakes' }}">Mistakes</a>
-  <a href="/insights" class="{{ 'active' if active == 'insights' }}">Insights</a>
-  <a href="/backtests" class="{{ 'active' if active == 'backtests' }}">Backtests</a>
-  <a href="/proposals" class="{{ 'active' if active == 'proposals' }}">Proposals</a>
-</nav>
-<main>
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-  <div style="margin-bottom:16px; display:flex; flex-direction:column; gap:6px;">
-    {% for category, message in messages %}
-    <div class="pill {{ category }}" style="width:fit-content;">{{ message }}</div>
-    {% endfor %}
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 48 48" width="40" height="40" style="display:block;flex:none">
+        <defs><clipPath id="kavclip"><circle cx="24" cy="24" r="23"></circle></clipPath></defs>
+        <circle cx="24" cy="24" r="23" fill="#1c4a44"></circle>
+        <g clip-path="url(#kavclip)">
+          <path d="M14 48 Q24 38 34 48 Z" fill="#5c8a1e"></path>
+          <rect x="21.6" y="34" width="4.8" height="6" rx="2" fill="#7d4e33"></rect>
+          <circle cx="12.5" cy="27" r="2.1" fill="#8d5a3b"></circle>
+          <circle cx="35.5" cy="27" r="2.1" fill="#8d5a3b"></circle>
+          <circle cx="24" cy="26.5" r="11.5" fill="#8d5a3b"></circle>
+          <circle cx="13" cy="18.5" r="5" fill="#241a12"></circle>
+          <circle cx="18" cy="13.5" r="5.5" fill="#241a12"></circle>
+          <circle cx="24" cy="11.5" r="6" fill="#241a12"></circle>
+          <circle cx="30" cy="13.5" r="5.5" fill="#241a12"></circle>
+          <circle cx="35" cy="18.5" r="5" fill="#241a12"></circle>
+          <circle cx="11" cy="24" r="4" fill="#241a12"></circle>
+          <circle cx="37" cy="24" r="4" fill="#241a12"></circle>
+          <path d="M12.5 26 Q12 14.5 24 14 Q36 14.5 35.5 26 Q33 19.5 24 19.5 Q15 19.5 12.5 26 Z" fill="#241a12"></path>
+          <ellipse cx="19.6" cy="25.5" rx="2.1" ry="2.5" fill="#ffffff"></ellipse>
+          <ellipse cx="28.4" cy="25.5" rx="2.1" ry="2.5" fill="#ffffff"></ellipse>
+          <circle cx="19.9" cy="25.8" r="1.15" fill="#1d130c"></circle>
+          <circle cx="28.7" cy="25.8" r="1.15" fill="#1d130c"></circle>
+          <path d="M17 21.6 Q19.6 20.4 22 21.4" stroke="#241a12" stroke-width="1.4" fill="none" stroke-linecap="round"></path>
+          <path d="M26 21.4 Q28.4 20.4 31 21.6" stroke="#241a12" stroke-width="1.4" fill="none" stroke-linecap="round"></path>
+        </g>
+      </svg>
+      <div>
+        <div class="brand-word">KORA</div>
+        <div class="brand-sub">TRADING TERMINAL</div>
+      </div>
+    </div>
+    <nav class="sidenav">
+      <a href="/" class="{{ 'active' if active == 'index' }}">Overview</a>
+      <a href="/calendar" class="{{ 'active' if active == 'calendar' }}">Calendar</a>
+      <a href="/trades" class="{{ 'active' if active == 'trades' }}">Trades</a>
+      <a href="/mistakes" class="{{ 'active' if active == 'mistakes' }}">Mistakes</a>
+      <a href="/insights" class="{{ 'active' if active == 'insights' }}">Insights</a>
+      <a href="/backtests" class="{{ 'active' if active == 'backtests' }}">Backtests</a>
+      <a href="/proposals" class="{{ 'active' if active == 'proposals' }}">Proposals</a>
+    </nav>
+    <div class="sidebar-account">
+      <div class="box">
+        {% if shell_account.account_id %}
+        <div class="row">
+          <span class="led"></span>
+          <span class="label">{{ shell_account.source or 'account' }} &middot; {{ shell_account.account_id }}</span>
+        </div>
+        <div class="balance">{{ '%.2f'|format(shell_account.balance) if shell_account.balance is not none else '--' }}</div>
+        {% else %}
+        <div class="row"><span class="label">No account data yet</span></div>
+        {% endif %}
+      </div>
+    </div>
+  </aside>
+  <div class="main-col">
+    {% set page_meta = {
+      'index':     ('Overview', 'Account performance at a glance'),
+      'calendar':  ('Calendar', 'Daily P&L by day'),
+      'trades':    ('Trades', 'Full trade history'),
+      'mistakes':  ('Mistakes', 'Rule violations'),
+      'insights':  ('Insights', 'R-multiple stats and breakdowns'),
+      'backtests': ('Backtests', 'Saved backtest runs'),
+      'proposals': ('Proposals', 'Pending and past trade proposals'),
+    } %}
+    {% set title_pair = page_meta.get(active, ('Kora Terminal', '')) %}
+    <header class="topbar">
+      <div style="min-width:150px">
+        <h1>{{ title_pair[0] }}</h1>
+        <p class="subtitle">{{ title_pair[1] }}</p>
+      </div>
+      <div class="topbar-stats">
+        <div class="topbar-stat">
+          <div class="label">DAILY P/L</div>
+          <div class="value {{ 'pos' if shell_daily_pnl >= 0 else 'neg' }}">{{ '%+.2f'|format(shell_daily_pnl) }}</div>
+        </div>
+        <div class="topbar-stat">
+          <div class="label">DRAWDOWN</div>
+          <div class="value">{{ '%.2f'|format(shell_max_drawdown) }}</div>
+        </div>
+        <span class="topbar-clock" id="topbar-clock"></span>
+      </div>
+    </header>
+    <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div style="margin-bottom:16px; display:flex; flex-direction:column; gap:6px;">
+        {% for category, message in messages %}
+        <div class="pill {{ category }}" style="width:fit-content;">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+    </main>
   </div>
-  {% endif %}
-{% endwith %}
-{% block content %}{% endblock %}
-</main>
+</div>
+<script>
+  function tickClock() {
+    var el = document.getElementById('topbar-clock');
+    if (!el) return;
+    var d = new Date();
+    el.textContent = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+</script>
 </body>
 </html>

@@ -55,6 +55,31 @@ def _require_password():
     return None
 
 
+@app.context_processor
+def _shell_context():
+    """Data every page's shell (sidebar account card, topbar stat pair) needs.
+    Deliberately only ever real, locally-known data - no live API call here
+    (that would add a network dependency to every single page load), and no
+    placeholder for things we can't actually know yet (session latency,
+    whether a background scan process is running) rather than faking them.
+    """
+    conn = _conn()
+    trades = get_trades(conn)
+    last_trade = trades[-1] if trades else None
+    daily_progress = compute_daily_progress(trades)
+    today = date.today().isoformat()
+    today_pnl = daily_progress.get(today, {}).get("pnl", 0.0)
+    return {
+        "shell_account": {
+            "account_id": last_trade["account_id"] if last_trade else None,
+            "source": last_trade["source"] if last_trade else None,
+            "balance": last_trade["balance_after"] if last_trade else None,
+        },
+        "shell_daily_pnl": today_pnl,
+        "shell_max_drawdown": compute_period_stats(trades).get("max_drawdown", 0.0) if trades else 0.0,
+    }
+
+
 def _parse_time(iso: str) -> datetime:
     return datetime.fromisoformat(iso)
 

@@ -12,6 +12,10 @@ behavior:
   allowed_sessions_utc:                       # hour ranges (UTC) you're allowed to trade
     - [7, 11]    # London
     - [13, 17]   # NY overlap
+  session_exempt_symbols:                     # instruments with no real trading session (24/7
+    - "Volatility 10 Index"                   # synthetic indices) - allowed_sessions_utc doesn't
+    - "Volatility 75 Index"                   # apply to these, so outside_session never fires
+    - "Step Index"                            # for them.
 
 mistakes:
   - id: revenge_trade

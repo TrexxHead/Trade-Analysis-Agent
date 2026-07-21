@@ -42,7 +42,10 @@ def evaluate_trades(trades: list[dict], rules: dict) -> dict[str, list[dict]]:
                     "detail": f"Opened {gap_minutes:.1f} min after a loss on {prev['symbol']}",
                 })
 
+    session_exempt = set(behavior.get("session_exempt_symbols", []))
     for t in sorted_trades:
+        if t["symbol"] in session_exempt:
+            continue
         hour = _parse(t["open_time"]).hour
         if not any(start <= hour < end for start, end in behavior["allowed_sessions_utc"]):
             flags[t["id"]].append({"rule_id": "outside_session", "detail": f"Opened at {hour:02d}:00 UTC"})

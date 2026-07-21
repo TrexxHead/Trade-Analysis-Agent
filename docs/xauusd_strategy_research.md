@@ -81,8 +81,9 @@ QuantifiedStrategies already showed doesn't work.
 5. Target: 1.5-2x the Asian range width, trailed by a 1x ATR chandelier
    stop once price reaches 1x the initial risk in profit.
 6. Skip the setup entirely on days with a scheduled high-impact release
-   (NFP/CPI/FOMC) before 12:00 UTC - Strategy 3 owns that behavior instead
-   of this one.
+   (NFP/CPI/FOMC) before 12:00 UTC - event-driven volatility isn't what
+   this strategy is designed to trade, and mixing the two muddies which
+   one gets credit for a result.
 
 **Sourced rationale for the filters:** the range-width and ATR-percentile
 filters exist specifically because unfiltered breakout is a documented
@@ -137,39 +138,82 @@ fast/slow pair) and re-scaled to a much wider, asymmetric R:R. It's the
 most straightforward of the three to extend our existing
 `src/strategy/signals.py` for.
 
-### Strategy 3 - News-driven liquidity-sweep reversal
+### Strategy 3 - Confluence price-action reversal at structural levels
 
-**Thesis:** trade the well-documented NFP/CPI/FOMC pattern directly,
-rather than avoiding news (which Strategies 1 and 2 both do) - since the
-initial spike-then-reversal shape around high-impact releases is one of
-the more consistently observed behaviors in gold specifically, not a
-generic pattern borrowed from equities.
+**Thesis:** this replaces the original news-driven design (per your
+request to substitute S/R, candlesticks, Fibonacci, and price action
+instead). The research changes the shape of this strategy in an important
+way: **Fibonacci and candlestick patterns are both weak in isolation**, so
+the strategy is built around *requiring confluence* - multiple independent
+signals agreeing - rather than trading any one of them alone. That
+requirement isn't a style preference, it's a direct response to what the
+evidence says:
+
+- A study across three equity markets found **no statistical support for
+  Fibonacci retracements as a standalone signal** - a logistic regression
+  of bounce probability against "is this a Fibonacci zone" produced
+  statistically insignificant results, meaning price was no more likely to
+  reverse at a Fib level than at a random level ([ScienceDirect](https://www.sciencedirect.com/science/article/abs/pii/S0957417421012495)). A separate
+  study (Kempen, 2016) found no retracement level outperformed the others,
+  though noted the 50% level saw reversals slightly more often ([dspace.ut.ee](https://dspace.ut.ee/bitstreams/2d30b4ad-61b5-44ac-b2fe-0bd6247686d5/download)) -
+  worth noting 50% isn't even a true Fibonacci ratio, it's a symmetry
+  level traditionally bundled into retracement tools by convention.
+- Candlestick patterns are **not all equally worthless**, per Thomas
+  Bulkowski's statistical pattern-performance research (the most-cited
+  quantitative source on this, though derived from US equities, not
+  gold specifically): bearish engulfing reverses ~79% of the time (ranked
+  5th of 103 patterns studied), bullish engulfing ~63% (ranked 22nd), pin
+  bars ~60% on daily charts - but Bulkowski's own finding is that **pattern
+  accuracy improves 10-15% when combined with trend/level context**, and
+  degrades when traded in isolation ([Sacred Traders](https://sacredtraders.com/the-eight-best-performing-candles-by-thomas-n-bulkowski/), [Strike.money](https://www.strike.money/technical-analysis/pin-bar)).
+- Gold-specific research suggests **round-number psychological levels are
+  the most durable class of level for gold specifically** - more so than
+  for most instruments, because gold repeatedly makes fresh all-time highs,
+  which breaks the usual "trade off prior historical structure" approach
+  that works in range-bound or mean-reverting markets. $100 increments are
+  called out as the strongest, $50 increments as reliable, and the
+  strongest setups are where a round number aligns with a prior swing
+  high/low ("double confluence") ([FXNX](https://fxnx.com/en/blog/xauusd-strategy-why-gold-respects-psychological-levels), [Pro-Scalper](https://www.pro-scalper.com/xauusd-strategies/gold-round-number-strategy)).
+- The general principle that confluence (3+ independent factors) is what
+  separates working discretionary price-action approaches from noise is
+  echoed across multiple independent sources, not just one blog's opinion
+  ([Colibri Trader](https://www.colibritrader.com/confluence-in-trading/), [LuxAlgo](https://www.luxalgo.com/blog/multi-timeframe-fibonacci-levels-explained/), [Tradeciety](https://tradeciety.com/trading-price-action-with-sr-sd-and-fibonaccis)).
 
 **Rules:**
-1. Only active in a 30-minute window around scheduled NFP/CPI/FOMC
-   releases (requires an economic calendar feed - see the gap noted
-   below).
-2. Wait out the first 15 minutes post-release entirely - this is the
-   "15-minute rule": the first move is disproportionately likely to be the
-   liquidity sweep/stop hunt itself, not the real move ([FXNX](https://fxnx.com/en/blog/mastering-xauusd-news-15-minute-rule-cpi-nfp)).
-3. Identify the sweep: price spikes through the pre-release 1H swing
-   high/low, then closes back on the other side of that level within 2-3
-   candles (1-minute or 5-minute chart) - this close-back-through is what
-   distinguishes a genuine stop hunt from a real breakout ([Daily Price Action](https://dailypriceaction.com/blog/liquidity-sweep-reversals/), [EBC](https://www.ebc.com/forex/liquidity-sweep-in-forex-how-to-trade-the-trap)).
-4. Enter in the reversal direction on that confirming close, or on a
-   retest of the swept level showing rejection (wick/engulfing candle).
-5. Stop: just beyond the sweep's extreme wick - if price takes that out,
-   the read was wrong.
-6. Target: the opposing side of the pre-release range, or 2x risk,
-   whichever is closer (news volatility means targets are hit fast or not
-   at all - this isn't a trade to hold for hours).
+1. **Define a confluence zone.** A zone qualifies if at least 2 of the
+   following independently point to the same price band (within 0.5x
+   ATR(14) of each other):
+   - A round number at a $50 increment (in a stronger tier if it's also a
+     $100 increment).
+   - A prior significant swing high/low (last 20-50 bars, H1 or H4).
+   - A 38.2%, 50%, or 61.8% retracement of the most recent significant
+     swing (included per the research above, but only ever counts as one
+     factor among several - never traded alone, consistent with what the
+     evidence supports).
+2. **Require a qualifying candlestick signal** at that zone, restricted to
+   the specific patterns with documented above-average performance rather
+   than "any candlestick pattern": bullish/bearish engulfing, or a pin bar
+   (wick >= 2x body) closing back through the zone in the reversal
+   direction.
+3. **Require a momentum confirmation**: RSI(14) in oversold (<30) /
+   overbought (>70) territory, or showing divergence against the most
+   recent price extreme (price makes a new high/low, RSI doesn't).
+4. Enter on the close of the confirming candlestick pattern (or the next
+   candle's open, consistent with this repo's no-lookahead convention).
+5. Stop: beyond the confirming candle's extreme wick, or 1x ATR(14),
+   whichever is wider - avoids getting clipped by ordinary noise sitting
+   exactly at a well-watched level.
+6. Target: the next structural level in the trade's direction (next round
+   number or the opposing prior swing point), with a 1.5:1 minimum and
+   typically 2-3:1 - reversals off real structure tend to have room to the
+   next zone, unlike the tighter, faster news-driven trades this replaces.
 
-**Known gap:** this strategy needs release timestamps (NFP/CPI/FOMC
-calendar) as an input the current backtest engine doesn't have wired up -
-`src/backtest/engine.py` only knows about price candles. Backtesting this
-one specifically requires either a historical economic calendar feed or
-manually flagging release timestamps in the test data. Flagging this now
-rather than pretending it can be tested with what already exists.
+**Advantage over what this replaces:** unlike the news-driven version,
+every input here (swing highs/lows, round-number distance, Fibonacci
+levels, candlestick shapes, RSI divergence) is derivable from price
+candles alone - no economic calendar dependency, no external data gap.
+That makes it immediately backtestable with the same data the other two
+strategies use.
 
 ## 3. Position sizing: small equity -> scaling
 
@@ -230,6 +274,10 @@ Adapted for personal capital:
 
 None of the above is proof yet. Once your chart data arrives:
 
+All three strategies are now derivable from price candles alone - no
+external data feed is required for any of them, which wasn't true of the
+news-driven version this replaced.
+
 1. **Strategy 2** is the most straightforward to validate immediately -
    it extends the existing `src/strategy/signals.py` EMA/RSI framework
    with a multi-EMA basket, an angle/momentum filter, and the wider
@@ -238,12 +286,17 @@ None of the above is proof yet. Once your chart data arrives:
 2. **Strategy 1** needs the backtest engine to track a rolling ATR/range
    percentile (to implement the "narrower than 20-day average" filter) -
    a moderate but contained extension.
-3. **Strategy 3** needs release-timestamp data the engine doesn't
-   currently ingest - the honest gap noted above. Testing it properly
-   means sourcing a historical NFP/CPI/FOMC calendar, which is a separate
-   piece of work from what exists today.
+3. **Strategy 3** needs the most new building: swing high/low detection,
+   round-number distance calculation, Fibonacci-from-swing calculation,
+   a small candlestick-pattern recognizer (engulfing, pin bar), and an
+   RSI-divergence check. None of it is conceptually hard, but it's the
+   most net-new code of the three - worth being upfront that "confluence
+   of several factors" means several small detectors have to each be built
+   and each independently verified before trusting the combination.
 
 Recommended order once data lands: backtest Strategy 2 first (cheapest to
 stand up, most directly comparable to a real published implementation),
-then Strategy 1, then decide whether Strategy 3 is worth the calendar-data
-effort based on how much conviction the first two build.
+then Strategy 1, then Strategy 3 once its extra detectors are built -
+likely the most interesting of the three given how much confluence-based
+price action departs from the two "vanilla" approaches already shown to
+fail, but also the one requiring the most new code to test fairly.

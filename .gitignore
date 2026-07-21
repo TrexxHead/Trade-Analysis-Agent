@@ -7,3 +7,4 @@ reports_out/*.json
 !reports_out/.gitkeep
 backtests_out/*.json
 !backtests_out/.gitkeep
+*.log

@@ -15,6 +15,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from dotenv import load_dotenv
+
+load_dotenv()  # explicit here rather than relying on run_scan's own load_dotenv()
+# call running first via import - needed regardless when launched without a
+# shell that already has METAAPI_TOKEN/METAAPI_ACCOUNT_ID exported (e.g. Task
+# Scheduler).
+
 import run_scan
 
 

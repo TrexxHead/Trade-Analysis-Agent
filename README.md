@@ -317,6 +317,56 @@ failed scan (a network blip, etc.) logs the error and retries next
 interval rather than killing the loop; meant to run continuously in its
 own terminal (or as a background process) alongside the dashboard.
 
+### Running everything in the background (no terminal needed)
+
+Both the dashboard and the scan loop are meant to run continuously, but
+neither needs a terminal window open once it's started - and you shouldn't
+need to stop either one just to "check progress": the dashboard itself
+*is* the progress view. The **Scanner** page shows the last scan per
+instrument, **Proposals** shows anything new waiting for a decision, and
+both update from the same `data/trades.db` the background scan loop
+writes to - refreshing the page is enough, no restart required (see
+"Dashboard" above).
+
+To actually stop needing a terminal at all, run both as silent background
+processes launched at Windows logon, via Task Scheduler:
+
+```bash
+cd ~/Trade-Analysis-Agent
+git pull origin main
+WINPATH=$(pwd -W)
+schtasks /create /tn "TradeAgentDashboard" /tr "\"$WINPATH/run_dashboard.bat\"" /sc onlogon /rl highest /f
+schtasks /create /tn "TradeAgentScanLoop" /tr "\"$WINPATH/run_scan_loop.bat\"" /sc onlogon /rl highest /f
+```
+
+This registers two scheduled tasks that start automatically the moment you
+log into Windows and keep running in the background (via `pythonw`, so no
+console window pops up) - `run_dashboard.bat` and `run_scan_loop.bat` (both
+at the project root) each `cd` to the project folder first, so they work
+regardless of what directory Task Scheduler launches them from.
+
+To check on them without ever opening a terminal: visit
+`http://127.0.0.1:5000` anytime, or check Task Manager for `pythonw.exe`
+processes. If you do want to look under the hood, output is redirected to
+`dashboard.log` and `scan_loop.log` in the project root (both gitignored)
+rather than a console, since `pythonw` has none.
+
+A few things worth knowing:
+- **Run the two `schtasks /create` commands only once** - re-running them
+  (with `/f`) just re-registers the same task, harmless but unnecessary.
+- **To trigger a task immediately** instead of waiting for your next
+  logon: `schtasks /run /tn "TradeAgentDashboard"`.
+- **To stop everything**: `schtasks /end /tn "TradeAgentDashboard"` and
+  `schtasks /end /tn "TradeAgentScanLoop"` (stops the running process;
+  they'll start again at your next logon unless you also disable them).
+- **To remove the scheduled tasks entirely**:
+  `schtasks /delete /tn "TradeAgentDashboard" /f` and the same for
+  `TradeAgentScanLoop`.
+- Since this is a Task Scheduler entry rather than a shell you launched
+  yourself, it won't have your interactive shell's exported environment
+  variables - `.env` is loaded explicitly by both entry-point scripts now,
+  specifically so this works without that.
+
 ### Remote access
 
 **Set a password before exposing this beyond your own machine.** There's

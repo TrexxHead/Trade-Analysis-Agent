@@ -11,6 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from dotenv import load_dotenv
+
+load_dotenv()  # needed for METAAPI_TOKEN/METAAPI_ACCOUNT_ID/DASHBOARD_PASSWORD when
+# launched without a shell that already has them exported (e.g. Task Scheduler) -
+# must run before importing src.dashboard.app, which reads DASHBOARD_PASSWORD
+# at import time.
+
 from src.dashboard.app import app
 
 

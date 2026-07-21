@@ -5,23 +5,18 @@ Only supports mt4_mt5-style price-based stop/target simulation for now - see
 src/backtest/engine.py for why Deriv Multipliers/Options aren't included.
 """
 import argparse
-import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml
 
-from src.analysis.metrics import compute_period_stats
-from src.analysis.rules import evaluate_trades, load_rules
 from src.backtest.data import load_candles_csv
-from src.backtest.engine import run_backtest
+from src.backtest.report import run_and_report
 
 STRATEGY_PATH = Path(__file__).resolve().parents[1] / "config" / "strategy.yaml"
 RULES_PATH = Path(__file__).resolve().parents[1] / "config" / "rules.yaml"
-OUT_DIR = Path(__file__).resolve().parents[1] / "backtests_out"
 
 
 def main():
@@ -48,35 +43,7 @@ def main():
     instrument_cfg = {"symbol": args.symbol, "platform": "mt4_mt5"}
     symbol_spec = {"tick_size": args.tick_size, "tick_value": args.tick_value, "volume_step": args.volume_step}
 
-    result = run_backtest(candles, strategy_cfg, instrument_cfg, args.starting_balance, risk_pct, symbol_spec)
-    trades = result["trades"]
-
-    stats = compute_period_stats(trades)
-    mistake_counts: dict = {}
-    if trades:
-        flags = evaluate_trades(trades, rules_cfg)
-        for flag_list in flags.values():
-            for f in flag_list:
-                mistake_counts[f["rule_id"]] = mistake_counts.get(f["rule_id"], 0) + 1
-
-    print(f"\n{len(trades)} completed trades, starting balance {args.starting_balance:.2f} -> ending {result['ending_balance']:.2f}")
-    print("stats:", json.dumps(stats, indent=2))
-    print("mistake_counts (against config/rules.yaml):", mistake_counts)
-    if result["open_at_end"]:
-        print("\nNote: a position was still open when the data ran out (not counted above):", result["open_at_end"])
-
-    OUT_DIR.mkdir(exist_ok=True)
-    out_path = OUT_DIR / f"{args.symbol}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.json"
-    out_path.write_text(json.dumps({
-        "symbol": args.symbol,
-        "candle_range": {"start": candles[0]["time"], "end": candles[-1]["time"], "count": len(candles)},
-        "starting_balance": args.starting_balance,
-        "ending_balance": result["ending_balance"],
-        "stats": stats,
-        "mistake_counts": mistake_counts,
-        "trades": trades,
-    }, indent=2, default=str))
-    print(f"\nWrote {out_path}")
+    run_and_report(candles, strategy_cfg, instrument_cfg, rules_cfg, args.starting_balance, risk_pct, symbol_spec)
 
 
 if __name__ == "__main__":

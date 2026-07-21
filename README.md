@@ -190,6 +190,30 @@ Results are written to `backtests_out/<symbol>_<timestamp>.json` and reuse
 the same stats/rule-checking code as the live reporting side, so a
 backtest's numbers are directly comparable to what a real report would show.
 
+### Backtesting straight from MetaApi (no CSV export needed)
+
+If you have a live MetaApi connection, `scripts/backtest_live.py` pulls
+historical candles directly instead of needing a manual History Center
+export - useful for an instrument you haven't exported before, like the
+synthetic indices:
+
+```bash
+python scripts/backtest_live.py --symbol "Volatility 10 Index" --days 180
+python scripts/backtest_live.py --symbol "Volatility 75 Index" --days 180
+python scripts/backtest_live.py --symbol "Step Index" --days 180
+python scripts/backtest_live.py --symbol XAUUSD --days 180
+```
+
+It looks the symbol up in `config/strategy.yaml` (so it uses that
+instrument's own overrides, if you've added any), paginates
+`get_historical_candles` to cover `--days` of history (MetaApi caps a single
+call at 1000 candles), and fetches `tick_size`/`tick_value`/`volume_step`
+from MetaApi's symbol spec automatically instead of you having to supply
+them by hand. Actual history coverage depends on your broker's retention -
+check the printed candle range against what you asked for. Writes the same
+`backtests_out/<symbol>_<timestamp>.json` report as `run_backtest.py`, so
+results show up in the dashboard's Backtests page either way.
+
 ## Dashboard
 
 A web dashboard reads directly from `data/trades.db` and the

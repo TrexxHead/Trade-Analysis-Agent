@@ -8,7 +8,7 @@ into single trades before handing them to the rest of the pipeline.
 """
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from metaapi_cloud_sdk import MetaApi
 
@@ -127,6 +127,58 @@ async def _fetch_candles_async(symbol: str, timeframe: str, count: int) -> list[
 
 def fetch_candles(symbol: str, timeframe: str, count: int) -> list[dict]:
     return asyncio.run(_fetch_candles_async(symbol, timeframe, count))
+
+
+# get_historical_candles caps a single call at 1000 candles and always loads
+# backwards from a given start_time (or "now" if start_time is omitted) - to
+# pull enough history for a real backtest, page backwards repeatedly using
+# each batch's earliest candle as the next call's start_time, same idea as
+# _fetch_deals' time-range but for candles instead of deals.
+_MAX_HISTORY_PAGES = 50  # 50 * 1000 candles is far more than any realistic backtest window needs
+
+
+async def _fetch_candle_history_async(symbol: str, timeframe: str, days: int) -> list[dict]:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    api = MetaApi(token)
+    account = await api.metatrader_account_api.get_account(account_id)
+    mt_timeframe = TIMEFRAME_MAP.get(timeframe, timeframe.lower())
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    by_time: dict = {}
+    cursor = None  # None = "latest" for the first page
+    for _ in range(_MAX_HISTORY_PAGES):
+        batch = await account.get_historical_candles(symbol, mt_timeframe, start_time=cursor, limit=1000)
+        if not batch:
+            break
+        new_times = [c["time"] for c in batch if c["time"] not in by_time]
+        if not new_times:
+            break
+        for c in batch:
+            by_time[c["time"]] = c
+        earliest = min(c["time"] for c in batch)
+        if earliest <= cutoff:
+            break
+        cursor = earliest
+
+    kept = [c for t, c in by_time.items() if t >= cutoff]
+    result = [
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        for c in kept
+    ]
+    result.sort(key=lambda c: c["time"])
+    return result
+
+
+def fetch_candle_history(symbol: str, timeframe: str, days: int) -> list[dict]:
+    """Pulls up to `days` of history for one symbol via paginated
+    get_historical_candles calls - unlike fetch_candles (latest N bars,
+    used for live scanning), this is for backtesting, where a real
+    historical window matters more than a fixed candle count. Actual
+    coverage is capped by your broker's history depth, not just `days` -
+    check the returned range against what you asked for.
+    """
+    return asyncio.run(_fetch_candle_history_async(symbol, timeframe, days))
 
 
 async def _get_positions_async() -> list[dict]:

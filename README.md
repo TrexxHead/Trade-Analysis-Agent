@@ -176,7 +176,10 @@ backtest's numbers are directly comparable to what a real report would show.
 A web dashboard reads directly from `data/trades.db` and the
 `reports_out`/`backtests_out` JSON files - it doesn't compute anything new,
 it just presents what the rest of this repo already produces, and lets you
-approve/reject pending trade proposals without touching the terminal.
+approve/reject pending trade proposals without touching the terminal. It's
+styled as "Kora Terminal" - a dark sidebar+topbar shell (see
+`docs/kora_roadmap.md` for the full design direction and what's still
+aspirational versus built).
 
 ```bash
 python scripts/run_dashboard.py            # http://127.0.0.1:5000
@@ -191,7 +194,12 @@ running on. Pages:
   (color-coded green/orange/red the same way prop-firm dashboards do,
   warning before you breach `config/rules.yaml`'s `max_daily_loss_pct`,
   not after).
-- **Calendar** - a monthly P&L heatmap (blue = profit, red = loss, shade
+- **Positions** - live open positions on your MetaApi (MT4/5) account,
+  fetched directly from MetaApi (not cached in `data/trades.db`, since a
+  position isn't a closed "trade" yet). Needs `METAAPI_TOKEN` and
+  `METAAPI_ACCOUNT_ID` set; reports honestly if they're missing or the
+  API call fails rather than showing an empty table.
+- **Calendar** - a monthly P&L heatmap (green = profit, red = loss, shade
   = magnitude), the same "how's this month going" view a trading journal
   gives you.
 - **Trades** - the full trade history, filterable by source (Deriv / MT4-5).

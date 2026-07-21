@@ -31,17 +31,19 @@ exit:
 #   deriv_multipliers - stop-loss/take-profit as monetary amounts, fixed nominal stake
 #   deriv_options     - no stop/target; stake IS the risk, duration replaces "exit"
 instruments:
-  - symbol: EURUSD
-    platform: mt4_mt5
   - symbol: XAUUSD
     platform: mt4_mt5
-  - symbol: R_100
-    platform: deriv_multipliers
-    multiplier: 100
-  - symbol: R_50
-    platform: deriv_options
-    duration: 6
-    duration_unit: h
+
+# Deriv-native instruments (Multipliers/Options) removed - trading happens
+# entirely on the MT5 account, so these would just fail to connect. Add
+# them back if that changes:
+#   - symbol: R_100
+#     platform: deriv_multipliers
+#     multiplier: 100
+#   - symbol: R_50
+#     platform: deriv_options
+#     duration: 6
+#     duration_unit: h
 
 execution:
   require_demo: true   # refuse to execute unless the connected account resolves to demo/virtual

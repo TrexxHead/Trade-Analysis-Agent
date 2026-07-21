@@ -13,9 +13,9 @@ import yaml
 from dotenv import load_dotenv
 
 from src.ingest import deriv, metatrader
-from src.store.db import create_proposal, get_connection, has_pending_proposal
+from src.store.db import create_proposal, get_connection, has_pending_proposal, upsert_scan_status
+from src.strategy import scanning
 from src.strategy.order_spec import build_order_spec
-from src.strategy.signals import generate_idea
 
 load_dotenv()
 
@@ -32,12 +32,6 @@ def _balance_for_platform(platform: str, cache: dict) -> float:
     return cache[platform]
 
 
-def _candles_for(instrument: dict, timeframe: str, count: int) -> list[dict]:
-    if instrument["platform"] == "mt4_mt5":
-        return metatrader.fetch_candles(instrument["symbol"], timeframe, count)
-    return deriv.fetch_candles(instrument["symbol"], timeframe, count)
-
-
 def main():
     strategy_cfg = yaml.safe_load(STRATEGY_PATH.read_text())
     rules_cfg = yaml.safe_load(RULES_PATH.read_text())
@@ -49,23 +43,34 @@ def main():
 
     for instrument in strategy_cfg["instruments"]:
         symbol = instrument["symbol"]
-        if has_pending_proposal(conn, symbol):
-            print(f"{symbol}: skipping, already has a pending proposal")
-            continue
+        cfg = scanning.merged_cfg(strategy_cfg, instrument)
 
-        candles = _candles_for(instrument, strategy_cfg["timeframe"], strategy_cfg["lookback_candles"])
-        idea = generate_idea(candles, strategy_cfg)
-        if idea is None:
-            print(f"{symbol}: no setup")
-            continue
+        # A broken/unreachable/misnamed instrument shouldn't stop the rest of
+        # the watchlist from being scanned - record the failure and move on.
+        try:
+            if has_pending_proposal(conn, symbol):
+                print(f"{symbol}: skipping, already has a pending proposal")
+                continue
 
-        symbol_spec = metatrader.get_symbol_spec(symbol) if instrument["platform"] == "mt4_mt5" else None
-        balance = _balance_for_platform(instrument["platform"], balance_cache)
-        order_spec = build_order_spec(idea, instrument, strategy_cfg, balance, risk_pct, symbol_spec)
+            candles = scanning.candles_for(instrument, cfg["timeframe"], cfg["lookback_candles"])
+            idea = scanning.generate_idea(candles, cfg)
+            if idea is None:
+                print(f"{symbol}: no setup")
+                upsert_scan_status(conn, symbol, instrument["platform"], cfg["timeframe"])
+                continue
 
-        proposal_id = create_proposal(conn, instrument["platform"], symbol, idea["direction"], order_spec, idea["rationale"])
-        new_proposals.append(proposal_id)
-        print(f"{symbol}: NEW PROPOSAL #{proposal_id} ({idea['direction']}) - {idea['rationale']}")
+            symbol_spec = metatrader.get_symbol_spec(symbol) if instrument["platform"] == "mt4_mt5" else None
+            balance = _balance_for_platform(instrument["platform"], balance_cache)
+            order_spec = build_order_spec(idea, instrument, cfg, balance, risk_pct, symbol_spec)
+
+            proposal_id = create_proposal(conn, instrument["platform"], symbol, idea["direction"], order_spec, idea["rationale"])
+            new_proposals.append(proposal_id)
+            upsert_scan_status(conn, symbol, instrument["platform"], cfg["timeframe"],
+                                direction=idea["direction"], rationale=idea["rationale"])
+            print(f"{symbol}: NEW PROPOSAL #{proposal_id} ({idea['direction']}) - {idea['rationale']}")
+        except Exception as e:
+            print(f"{symbol}: scan failed - {e}", file=sys.stderr)
+            upsert_scan_status(conn, symbol, instrument["platform"], cfg["timeframe"], error=str(e))
 
     print(f"\n{len(new_proposals)} new proposal(s): {new_proposals}")
 

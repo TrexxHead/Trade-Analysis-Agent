@@ -64,16 +64,39 @@ already platform/symbol-agnostic; `config/strategy.yaml` was
 deliberately scoped down to just XAUUSD when the user confirmed
 MT5-only trading, not because the code can't handle more.
 
-1. Add additional MT5 symbols to `config/strategy.yaml` (e.g. other
-   pairs/metals available on the same Deriv MT5 account) and confirm
-   `run_scan.py` produces sane proposals for each via backtesting first.
-2. A **Scanner** page: one row per watched symbol, current signal state
-   (trending/pullback/no-setup), last scan time - a multi-symbol view
-   of what `run_scan.py` already computes per-symbol today.
-3. Re-evaluate Deriv-native synthetic indices/Multipliers/Options
+**Done:** `config/strategy.yaml` now also watches Volatility 10 Index,
+Volatility 75 Index, and Step Index (Deriv synthetic indices, traded
+via the same MT5 account - not the Deriv-native WebSocket API).
+`src/strategy/scanning.py` merges per-instrument overrides over the
+shared defaults, `run_scan.py` scans every instrument independently
+(one failing symbol doesn't stop the rest) and persists a per-instrument
+`scan_status` row either way, and the dashboard's **Scanner** page reads
+that cached status rather than calling MetaApi live - a live round-trip
+per watched instrument on every page load doesn't scale past one symbol
+given MetaApi's default 60s per-request timeout.
+
+**Still open:**
+1. **Backtest each new instrument before trusting its proposals.** The
+   synthetic indices inherit the XAUUSD-tuned trend-pullback defaults
+   (EMA50/200, RSI14) untested - they trade 24/7 on a constant
+   statistical volatility model with no session/news structure, so
+   those defaults are a guess, not a validated setting. Run
+   `scripts/run_backtest.py` per instrument and add a `trend`/`entry`/
+   `exit` override block in `config/strategy.yaml` once tuned.
+2. **Confirm exact MT5 symbol strings** against the live account's
+   Market Watch - a mismatched name currently just shows up as a
+   per-instrument scan error on the Scanner page rather than crashing
+   anything, but it means that instrument silently never gets scanned
+   until the name is fixed.
+3. **Cross-instrument risk awareness.** Right now each instrument is
+   risk-sized independently (`risk_pct` of balance per trade) with no
+   check for combined exposure if multiple instruments signal at once -
+   worth a portfolio-level risk cap once more than one instrument is
+   live-scanning regularly.
+4. Re-evaluate Deriv-native synthetic indices/Multipliers/Options
    (`src/ingest/deriv.py`, already built and unit-tested but unused)
    only if the user actually starts trading Deriv-native products
-   again - don't wire it into the live dashboard on spec.
+   directly (not via MT5) - don't wire it into the live dashboard on spec.
 
 ## Phase 3 - Risk analytics
 

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Scanner - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Scanner</h1>
+<p style="color:var(--text-secondary); font-size:13px; margin:-12px 0 16px;">
+  Last known signal state per watched instrument, as of the most recent
+  <code>scripts/run_scan.py</code> run. Run <code>scripts/run_scan_loop.py</code>
+  continuously to keep this current.
+</p>
+
+<div class="card">
+<table>
+  <thead><tr><th>Symbol</th><th>Timeframe</th><th>Checked</th><th>Status</th><th>Details</th></tr></thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td>{{ r.symbol }}</td>
+      <td>{{ r.timeframe or '—' }}</td>
+      <td>{{ r.checked_at[:16].replace('T',' ') if r.checked_at else 'never' }}</td>
+      <td>
+        {% if not r.checked_at %}<span class="pill muted">not scanned yet</span>
+        {% elif r.error %}<span class="pill critical">error</span>
+        {% elif r.direction %}<span class="pill good">{{ r.direction }} setup</span>
+        {% else %}<span class="pill muted">no setup</span>{% endif %}
+      </td>
+      <td style="max-width:420px; font-size:12px; color:var(--text-secondary);">
+        {% if not r.checked_at %}Run <code>scripts/run_scan.py</code> to check this instrument.
+        {% elif r.error %}{{ r.error }}
+        {% elif r.rationale %}{{ r.rationale }}
+        {% else %}No trend-pullback conditions met at last check.{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

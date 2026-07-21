@@ -30,20 +30,38 @@ exit:
 #   mt4_mt5           - stop-loss/take-profit as price levels, position size from risk %
 #   deriv_multipliers - stop-loss/take-profit as monetary amounts, fixed nominal stake
 #   deriv_options     - no stop/target; stake IS the risk, duration replaces "exit"
+#
+# An instrument can override any of timeframe/lookback_candles/trend/entry/exit
+# from the shared defaults above (src/strategy/scanning.py merges them) - use
+# this once you've backtested a setup for that specific instrument. Until
+# then it just inherits the shared XAUUSD-tuned defaults, which are NOT
+# validated for the synthetic indices below.
 instruments:
   - symbol: XAUUSD
     platform: mt4_mt5
 
-# Deriv-native instruments (Multipliers/Options) removed - trading happens
-# entirely on the MT5 account, so these would just fail to connect. Add
-# them back if that changes:
-#   - symbol: R_100
-#     platform: deriv_multipliers
-#     multiplier: 100
-#   - symbol: R_50
-#     platform: deriv_options
-#     duration: 6
-#     duration_unit: h
+  # Deriv synthetic indices, traded via the same Deriv MT5 account (not the
+  # Deriv-native WebSocket API in src/ingest/deriv.py) - these symbol strings
+  # are Deriv's standard MT5 naming, but CONFIRM each one exactly matches
+  # your MT5 terminal's Market Watch before scanning (brokers sometimes add
+  # suffixes, e.g. a "(1s)" variant) - a mismatched name just fails to fetch
+  # candles rather than silently scanning the wrong thing.
+  #
+  # These trade 24/7 with a constant statistical volatility model and no
+  # macro trend/news structure like gold - the shared EMA50/200 + RSI(14)
+  # trend-pullback settings are UNVALIDATED here. Backtest
+  # (scripts/run_backtest.py) before letting any of these propose live
+  # trades, and override trend/entry/exit per-instrument once tuned, e.g.:
+  #   trend: {fast_ema: 20, slow_ema: 100}
+  #   entry: {pullback_atr_multiple: 0.75}
+  - symbol: "Volatility 10 Index"
+    platform: mt4_mt5
+
+  - symbol: "Volatility 75 Index"
+    platform: mt4_mt5
+
+  - symbol: "Step Index"
+    platform: mt4_mt5
 
 execution:
   require_demo: true   # refuse to execute unless the connected account resolves to demo/virtual

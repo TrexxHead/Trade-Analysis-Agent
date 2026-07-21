@@ -117,16 +117,35 @@ requires passing `--live` explicitly; there's no config flag that quietly
 flips this, on purpose, since that's the kind of thing that shouldn't be
 possible to trigger by accident.
 
+### Scanning multiple instruments
+
+`config/strategy.yaml`'s `instruments` list can hold more than one symbol —
+`run_scan.py` checks all of them every run, independently (one instrument
+erroring out, e.g. a mistyped symbol name, doesn't stop the rest from being
+scanned). Each instrument inherits the shared `trend`/`entry`/`exit`/
+`timeframe` defaults but can override any of them, since a strategy tuned for
+one instrument's behavior isn't automatically valid for another — a
+synthetic index (Volatility 10/75, Step Index) trades 24/7 on a constant
+statistical volatility model with no macro trend/news structure the way
+XAUUSD does, so treat the shared defaults as **unvalidated** for those until
+you've backtested them specifically (`scripts/run_backtest.py`) and added an
+override block. See the comments in `config/strategy.yaml` for the override
+syntax.
+
+Every scan writes a per-instrument result (a setup, "no setup", or an error)
+to `data/trades.db`, which the dashboard's **Scanner** page reads — that page
+never calls MetaApi directly itself, since a live network round-trip per
+watched instrument on every page load doesn't scale (MetaApi's default
+per-request timeout is 60 seconds). Run `scripts/run_scan_loop.py`
+continuously to keep the Scanner page current.
+
 **What's not done yet, on purpose:**
-- The MetaApi candle/symbol-spec/order methods (`get_candles`,
-  `get_symbol_specification`, `create_market_buy_order`, etc.) are written
-  against MetaApi's documented API shape but haven't been verified against a
-  live account or your installed SDK version — check `src/ingest/metatrader.py`
-  against a real demo run before trusting it.
 - The strategy is a conservative starting point, not a validated edge. Expect
-  to tune `config/strategy.yaml` after watching it run on demo for a while.
-- There's no backtest yet — proposals are only checked against live-fetched
-  candles going forward from whenever you start running scans.
+  to tune `config/strategy.yaml` after watching it run on demo for a while —
+  especially for any instrument beyond XAUUSD, which hasn't been backtested.
+- There's no correlation check across instruments yet — if XAUUSD and a
+  synthetic index both fire at once, each is sized independently against
+  your risk %, without accounting for combined account risk.
 
 ## Backtesting (no live connection needed)
 
@@ -194,6 +213,9 @@ running on. Pages:
   (color-coded green/orange/red the same way prop-firm dashboards do,
   warning before you breach `config/rules.yaml`'s `max_daily_loss_pct`,
   not after).
+- **Scanner** - the last known signal state per watched instrument (setup /
+  no setup / error), as of the most recent `run_scan.py` run - not a live
+  call, see "Scanning multiple instruments" above.
 - **Positions** - live open positions on your MetaApi (MT4/5) account,
   fetched directly from MetaApi (not cached in `data/trades.db`, since a
   position isn't a closed "trade" yet). Needs `METAAPI_TOKEN` and

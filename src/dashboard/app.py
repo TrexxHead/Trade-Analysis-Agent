@@ -29,13 +29,22 @@ from src.analysis.metrics import (
     compute_period_stats,
     compute_r_multiple_stats,
 )
-from src.store.db import get_connection, get_flags, get_trade, get_trades, list_proposals, upsert_annotation
+from src.store.db import (
+    get_connection,
+    get_flags,
+    get_scan_status,
+    get_trade,
+    get_trades,
+    list_proposals,
+    upsert_annotation,
+)
 from src.strategy.execution import execute_proposal, reject_proposal
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORTS_DIR = ROOT / "reports_out"
 BACKTESTS_DIR = ROOT / "backtests_out"
 RULES_PATH = ROOT / "config" / "rules.yaml"
+STRATEGY_PATH = ROOT / "config" / "strategy.yaml"
 
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
 
@@ -248,6 +257,22 @@ def trade_detail(trade_id):
         flash(f"No trade with id {trade_id}.", "critical")
         return redirect(url_for("trades_view"))
     return render_template("trade_detail.html", active="trades", trade=trade)
+
+
+@app.route("/scanner")
+def scanner_view():
+    # Reads the last scan_status row per instrument (written by
+    # scripts/run_scan.py) rather than calling MetaApi live here - a live
+    # network round-trip per watched instrument on every page load doesn't
+    # scale past one symbol (MetaApi's default per-request timeout is 60s),
+    # so this page reflects "as of the last scan", same as every other page
+    # in this dashboard reflects "as of the last ingest/backtest run". Run
+    # scripts/run_scan_loop.py continuously for this to stay fresh.
+    conn = _conn()
+    configured = {i["symbol"] for i in yaml.safe_load(STRATEGY_PATH.read_text())["instruments"]}
+    statuses = {s["symbol"]: s for s in get_scan_status(conn)}
+    results = [statuses.get(symbol, {"symbol": symbol, "checked_at": None}) for symbol in configured]
+    return render_template("scanner.html", active="scanner", results=results)
 
 
 @app.route("/positions")

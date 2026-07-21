@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS trade_proposals (
     executed_order_id TEXT
 );
 
+CREATE TABLE IF NOT EXISTS scan_status (
+    symbol TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    direction TEXT,
+    rationale TEXT,
+    error TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_close_time ON trades(close_time);
 CREATE INDEX IF NOT EXISTS idx_proposals_status ON trade_proposals(status);
 """
@@ -217,6 +227,40 @@ def list_proposals(conn: sqlite3.Connection, status: str | None = None) -> list[
     else:
         rows = conn.execute("SELECT * FROM trade_proposals ORDER BY created_at ASC")
     return [dict(row) for row in rows]
+
+
+def upsert_scan_status(conn: sqlite3.Connection, symbol: str, platform: str, timeframe: str,
+                        direction: str | None = None, rationale: str | None = None,
+                        error: str | None = None) -> None:
+    """Records what the last scan saw for one instrument - a "no setup"
+    result and a hard error both get recorded, same as a hit, so the
+    Scanner page can distinguish "checked recently, nothing there" from
+    "hasn't been checked" or "broken". Written by run_scan.py, read by the
+    dashboard, so the Scanner page never has to call MetaApi live itself -
+    a live per-instrument network call on every page load doesn't scale
+    once you're watching several instruments (MetaApi's default per-request
+    timeout is 60s), and everywhere else in this dashboard already just
+    presents what a script already computed rather than recomputing live.
+    """
+    conn.execute(
+        """
+        INSERT INTO scan_status (symbol, platform, timeframe, checked_at, direction, rationale, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET
+            platform=excluded.platform,
+            timeframe=excluded.timeframe,
+            checked_at=excluded.checked_at,
+            direction=excluded.direction,
+            rationale=excluded.rationale,
+            error=excluded.error
+        """,
+        (symbol, platform, timeframe, datetime.now(timezone.utc).isoformat(), direction, rationale, error),
+    )
+    conn.commit()
+
+
+def get_scan_status(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(row) for row in conn.execute("SELECT * FROM scan_status ORDER BY symbol ASC")]
 
 
 def update_proposal_status(conn: sqlite3.Connection, proposal_id: int, status: str,

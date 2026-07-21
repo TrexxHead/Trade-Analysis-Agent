@@ -129,6 +129,41 @@ def fetch_candles(symbol: str, timeframe: str, count: int) -> list[dict]:
     return asyncio.run(_fetch_candles_async(symbol, timeframe, count))
 
 
+async def _get_positions_async() -> list[dict]:
+    token = os.environ["METAAPI_TOKEN"]
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    connection = await _connected_rpc(token, account_id)
+    # Unlike get_deals_by_time_range, get_positions resolves directly to a
+    # bare list of MetatraderPosition dicts (confirmed via SDK source:
+    # rpc_metaapi_connection_instance.py) - no {"positions": [...]} wrapper.
+    positions = await connection.get_positions()
+    return [
+        {
+            "id": p["id"],
+            "symbol": p["symbol"],
+            "direction": "buy" if p["type"] == "POSITION_TYPE_BUY" else "sell",
+            "volume": p["volume"],
+            "open_price": p["openPrice"],
+            "current_price": p["currentPrice"],
+            "stop_loss": p.get("stopLoss"),
+            "take_profit": p.get("takeProfit"),
+            "profit": p["profit"],
+            "swap": p.get("swap", 0.0),
+            "open_time": _iso(p["time"]),
+        }
+        for p in positions
+    ]
+
+
+def get_positions() -> list[dict]:
+    """Live open positions on the configured MetaApi account. Unlike everything
+    else in this module, this can't be served from data/trades.db - open
+    positions aren't "trades" until they close, so this always hits MetaApi
+    directly rather than caching in SQLite.
+    """
+    return asyncio.run(_get_positions_async())
+
+
 async def _get_symbol_spec_async(symbol: str) -> dict:
     token = os.environ["METAAPI_TOKEN"]
     account_id = os.environ["METAAPI_ACCOUNT_ID"]

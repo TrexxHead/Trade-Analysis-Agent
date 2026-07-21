@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Positions - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Open Positions</h1>
+
+<div class="card">
+{% if error %}
+<div class="empty">{{ error }}</div>
+{% elif positions %}
+<table>
+  <thead>
+    <tr>
+      <th>Opened</th><th>Symbol</th><th>Dir</th><th>Volume</th>
+      <th>Open</th><th>Current</th><th>SL</th><th>TP</th><th>P&amp;L</th><th>Swap</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in positions %}
+    <tr>
+      <td>{{ p.open_time[:16].replace('T',' ') }}</td>
+      <td>{{ p.symbol }}</td>
+      <td>{{ p.direction }}</td>
+      <td>{{ p.volume }}</td>
+      <td>{{ '%.5g' % p.open_price }}</td>
+      <td>{{ '%.5g' % p.current_price }}</td>
+      <td>{{ '%.5g' % p.stop_loss if p.stop_loss is not none else '—' }}</td>
+      <td>{{ '%.5g' % p.take_profit if p.take_profit is not none else '—' }}</td>
+      <td class="{{ 'pos' if p.profit >= 0 else 'neg' }}">{{ '%+.2f' % p.profit }}</td>
+      <td>{{ '%+.2f' % p.swap }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No open positions right now.</div>
+{% endif %}
+</div>
+{% endblock %}

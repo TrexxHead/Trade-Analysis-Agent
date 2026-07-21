@@ -250,6 +250,22 @@ def trade_detail(trade_id):
     return render_template("trade_detail.html", active="trades", trade=trade)
 
 
+@app.route("/positions")
+def positions_view():
+    positions = []
+    error = None
+    if not (os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID")):
+        error = "METAAPI_TOKEN / METAAPI_ACCOUNT_ID not configured - see .env.example."
+    else:
+        try:
+            from src.ingest.metatrader import get_positions
+            positions = get_positions()
+        except Exception as e:
+            print(f"Failed to fetch open positions: {e}", file=sys.stderr)
+            error = f"Couldn't reach MetaApi: {e}"
+    return render_template("positions.html", active="positions", positions=positions, error=error)
+
+
 @app.route("/insights")
 def insights_view():
     conn = _conn()

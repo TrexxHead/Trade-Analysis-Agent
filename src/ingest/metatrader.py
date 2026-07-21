@@ -79,7 +79,10 @@ async def _connected_rpc(token: str, account_id: str):
 
 async def _fetch_deals(token: str, account_id: str, date_from: datetime, date_to: datetime) -> list[dict]:
     connection = await _connected_rpc(token, account_id)
-    return await connection.get_deals_by_time_range(date_from, date_to)
+    result = await connection.get_deals_by_time_range(date_from, date_to)
+    # Confirmed against a live account: this returns {"deals": [...], "synchronizing": bool},
+    # not a bare list - the wrapping isn't documented, so don't assume it back to a list shape.
+    return result["deals"]
 
 
 def fetch_trades(date_from: datetime, date_to: datetime) -> list[dict]:

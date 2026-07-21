@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS trade_flags (
     FOREIGN KEY (trade_id) REFERENCES trades(id)
 );
 
+CREATE TABLE IF NOT EXISTS trade_annotations (
+    trade_id TEXT PRIMARY KEY REFERENCES trades(id),
+    setup TEXT,
+    emotion TEXT,
+    notes TEXT,
+    risk_amount REAL
+);
+
 CREATE TABLE IF NOT EXISTS trade_proposals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
@@ -97,19 +105,57 @@ def upsert_trades(conn: sqlite3.Connection, trades: list[dict]) -> int:
 
 def get_trades(conn: sqlite3.Connection, start: str | None = None, end: str | None = None,
                source: str | None = None) -> list[dict]:
-    query = "SELECT * FROM trades WHERE 1=1"
+    query = """
+        SELECT trades.*, trade_annotations.setup AS setup, trade_annotations.emotion AS emotion,
+               trade_annotations.notes AS notes, trade_annotations.risk_amount AS risk_amount
+        FROM trades
+        LEFT JOIN trade_annotations ON trade_annotations.trade_id = trades.id
+        WHERE 1=1
+    """
     params: list = []
     if start:
-        query += " AND close_time >= ?"
+        query += " AND trades.close_time >= ?"
         params.append(start)
     if end:
-        query += " AND close_time < ?"
+        query += " AND trades.close_time < ?"
         params.append(end)
     if source:
-        query += " AND source = ?"
+        query += " AND trades.source = ?"
         params.append(source)
-    query += " ORDER BY close_time ASC"
+    query += " ORDER BY trades.close_time ASC"
     return [dict(row) for row in conn.execute(query, params)]
+
+
+def get_trade(conn: sqlite3.Connection, trade_id: str) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT trades.*, trade_annotations.setup AS setup, trade_annotations.emotion AS emotion,
+               trade_annotations.notes AS notes, trade_annotations.risk_amount AS risk_amount
+        FROM trades
+        LEFT JOIN trade_annotations ON trade_annotations.trade_id = trades.id
+        WHERE trades.id = ?
+        """,
+        (trade_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_annotation(conn: sqlite3.Connection, trade_id: str, setup: str | None = None,
+                       emotion: str | None = None, notes: str | None = None,
+                       risk_amount: float | None = None) -> None:
+    conn.execute(
+        """
+        INSERT INTO trade_annotations (trade_id, setup, emotion, notes, risk_amount)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(trade_id) DO UPDATE SET
+            setup=excluded.setup,
+            emotion=excluded.emotion,
+            notes=excluded.notes,
+            risk_amount=excluded.risk_amount
+        """,
+        (trade_id, setup, emotion, notes, risk_amount),
+    )
+    conn.commit()
 
 
 def set_trade_flags(conn: sqlite3.Connection, trade_id: str, flags: list[dict]) -> None:

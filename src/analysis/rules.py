@@ -1,13 +1,18 @@
 """Checks closed trades against config/rules.yaml.
 
-oversize_risk and daily_loss_limit_breached aren't evaluated yet - both need
-the account balance immediately *before* each trade, which neither ingestion
-module populates yet (balance_after is currently None on every trade). Wire
-that up once real account data is flowing, then extend evaluate_trades below.
+oversize_risk and daily_loss_limit_breached both need balance/risk data that
+isn't available for every trade: daily_loss_limit_breached needs
+balance_after (populated for MT4/5 trades via MetaApi, not yet for Deriv);
+oversize_risk needs each trade's planned risk_amount, which only exists for
+trades that have been annotated (src/store/db.py's trade_annotations) -
+manually-placed trades won't have one until tagged. Both rules simply skip
+trades missing the data they need rather than guessing.
 """
 from datetime import datetime
 
 import yaml
+
+from src.analysis.metrics import compute_daily_progress
 
 
 def load_rules(path: str) -> dict:
@@ -71,5 +76,35 @@ def evaluate_trades(trades: list[dict], rules: dict) -> dict[str, list[dict]]:
                 })
         else:
             open_count -= 1
+
+    max_daily_loss_pct = risk_cfg["max_daily_loss_pct"]
+    daily_progress = compute_daily_progress(sorted_trades)
+    day_running_pnl: dict[str, float] = {}
+    for t in sorted_trades:
+        if t.get("balance_after") is None:
+            continue
+        day = t["close_time"][:10]
+        start_balance = daily_progress[day]["start_balance"]
+        day_running_pnl[day] = day_running_pnl.get(day, 0.0) + t["pnl"]
+        if start_balance:
+            loss_pct = -day_running_pnl[day] / start_balance * 100
+            if loss_pct >= max_daily_loss_pct:
+                flags[t["id"]].append({
+                    "rule_id": "daily_loss_limit_breached",
+                    "detail": f"Day's cumulative loss {loss_pct:.1f}% >= {max_daily_loss_pct}% limit",
+                })
+
+    max_risk_per_trade_pct = risk_cfg["max_risk_per_trade_pct"]
+    for t in sorted_trades:
+        if not t.get("risk_amount") or t.get("balance_after") is None:
+            continue
+        balance_before = t["balance_after"] - t["pnl"]
+        if balance_before:
+            risk_pct = t["risk_amount"] / balance_before * 100
+            if risk_pct > max_risk_per_trade_pct:
+                flags[t["id"]].append({
+                    "rule_id": "oversize_risk",
+                    "detail": f"Risked {risk_pct:.1f}% of balance (limit {max_risk_per_trade_pct}%)",
+                })
 
     return flags

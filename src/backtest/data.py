@@ -10,6 +10,12 @@ Handles the common variants without requiring a specific one:
   string ("2024-01-02T00:00:00Z" or "2024-01-02 00:00:00"), plus whatever
   extra indicator columns happen to be on the chart (ignored - only the
   four columns right after the timestamp are read as OHLC)
+- A single combined "date time" column using MT-style dotted dates and no
+  explicit offset ("2024.01.02 00:00") - what MT5's own "Export Bars"
+  actually produces, as opposed to the two-separate-columns format above
+
+MT5 exports are also commonly saved as UTF-16 (with a BOM) rather than
+UTF-8 - detected and decoded automatically here.
 
 Timestamps are taken as-is from the file and treated as UTC. MT4/5 terminals
 actually export in the broker's server time (often GMT+2/+3, not true UTC) -
@@ -49,18 +55,29 @@ def _to_iso(date_str: str, time_str: str) -> str:
 
 
 def _parse_timestamp(value: str) -> str:
+    value = value.strip()
     if value.isdigit():
         return datetime.fromtimestamp(int(value), tz=timezone.utc).isoformat()
-    iso = value.strip().replace("Z", "+00:00")
-    if " " in iso and "T" not in iso:
-        iso = iso.replace(" ", "T", 1)
-    if "+" not in iso[10:]:  # no offset after the date portion - assume UTC
-        iso += "+00:00"
-    return iso
+
+    value = value.replace(".", "-").replace("Z", "+00:00")
+    date_part, _, rest = value.partition(" ") if " " in value else value.partition("T")
+    time_part, has_offset, offset = rest.partition("+")
+    if time_part.count(":") == 1:
+        time_part += ":00"
+    return f"{date_part}T{time_part}+{offset}" if has_offset else f"{date_part}T{time_part}+00:00"
+
+
+def _read_text(path: str | Path) -> str:
+    raw = Path(path).read_bytes()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig")
+    return raw.decode("utf-8")
 
 
 def load_candles_csv(path: str | Path) -> list[dict]:
-    lines = [line.strip() for line in Path(path).read_text().splitlines() if line.strip()]
+    lines = [line.strip() for line in _read_text(path).splitlines() if line.strip()]
     if not lines:
         return []
 

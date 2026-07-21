@@ -171,23 +171,20 @@ Results are written to `backtests_out/<symbol>_<timestamp>.json` and reuse
 the same stats/rule-checking code as the live reporting side, so a
 backtest's numbers are directly comparable to what a real report would show.
 
-## Dashboard (local only)
+## Dashboard
 
-A local web dashboard reads directly from `data/trades.db` and the
+A web dashboard reads directly from `data/trades.db` and the
 `reports_out`/`backtests_out` JSON files - it doesn't compute anything new,
-it just presents what the rest of this repo already produces.
+it just presents what the rest of this repo already produces, and lets you
+approve/reject pending trade proposals without touching the terminal.
 
 ```bash
 python scripts/run_dashboard.py            # http://127.0.0.1:5000
 python scripts/run_dashboard.py --port 8080
 ```
 
-It binds to `127.0.0.1` only, on purpose - this serves your trade history
-and P&L, so it isn't meant to be reachable from anywhere but your own
-machine. There's no authentication, because there's no network exposure to
-authenticate against.
-
-Pages:
+It binds to `127.0.0.1` by default - reachable only from the machine it's
+running on. Pages:
 - **Overview** - total P&L, win rate, profit factor, max drawdown, an
   equity curve, and your top mistake categories at a glance.
 - **Calendar** - a monthly P&L heatmap (blue = profit, red = loss, shade
@@ -199,11 +196,59 @@ Pages:
   visible rather than buried in a database.
 - **Backtests** - every `run_backtest.py` result, with drill-down into the
   individual simulated trades behind each summary.
-- **Proposals** - pending/executed/rejected trade proposals from the
-  propose-approve-execute workflow above.
+- **Proposals** - pending/executed/rejected trade proposals, with
+  **Approve**/**Reject** buttons on pending ones. Approving from the
+  dashboard is always demo-gated - going live stays a deliberate CLI action
+  (`decide_proposal.py --live`), not a button that's one click away in a
+  web UI.
 
 Since it reads the same `data/trades.db` that `run_ingest.py` writes to,
 it updates automatically after each ingestion run - no separate sync step.
+
+### Automated scanning
+
+```bash
+python scripts/run_scan_loop.py                       # scans every 20 minutes
+python scripts/run_scan_loop.py --interval-minutes 15
+```
+
+Runs `run_scan.py`'s logic on a repeating interval so proposals show up in
+the dashboard on their own. It only ever *proposes* - execution still
+requires an explicit approval, either here or via `decide_proposal.py`. A
+failed scan (a network blip, etc.) logs the error and retries next
+interval rather than killing the loop; meant to run continuously in its
+own terminal (or as a background process) alongside the dashboard.
+
+### Remote access
+
+**Set a password before exposing this beyond your own machine.** There's
+no authentication by default - fine for pure `127.0.0.1` use, not once
+something else can reach the page, since whoever has the link could see
+your trade history and approve/reject real orders. Add to `.env`:
+
+```
+DASHBOARD_PASSWORD=choose-something-here
+```
+
+The dashboard will then require it (HTTP Basic Auth - any username, that
+password) on every page.
+
+Simplest way to actually reach it from another device (phone, another
+computer) without deploying anything or opening router ports: a tunnel
+like [ngrok](https://ngrok.com/). It runs alongside the dashboard on your
+machine - your credentials and data never leave it - and gives you a
+public HTTPS URL that forwards to your local port:
+
+```bash
+ngrok http 5000
+```
+
+Ngrok prints a URL like `https://random-string.ngrok-free.app` - open that
+from any device, log in with the password above, and it's the same
+dashboard. On the free tier that URL changes each time you restart ngrok;
+a paid plan gets you a stable one if that matters. Keep both the
+dashboard and the ngrok process running in their own terminals for as
+long as you want it reachable.
 
 ## Scheduling
 

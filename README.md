@@ -335,9 +335,15 @@ processes launched at Windows logon, via Task Scheduler:
 cd ~/Trade-Analysis-Agent
 git pull origin main
 WINPATH=$(pwd -W)
-schtasks /create /tn "TradeAgentDashboard" /tr "\"$WINPATH/run_dashboard.bat\"" /sc onlogon /rl highest /f
-schtasks /create /tn "TradeAgentScanLoop" /tr "\"$WINPATH/run_scan_loop.bat\"" /sc onlogon /rl highest /f
+MSYS_NO_PATHCONV=1 schtasks /create /tn "TradeAgentDashboard" /tr "\"$WINPATH/run_dashboard.bat\"" /sc onlogon /rl highest /f
+MSYS_NO_PATHCONV=1 schtasks /create /tn "TradeAgentScanLoop" /tr "\"$WINPATH/run_scan_loop.bat\"" /sc onlogon /rl highest /f
 ```
+
+`MSYS_NO_PATHCONV=1` is required here specifically because you're running
+`schtasks` (a native Windows tool) from Git Bash - its MSYS layer otherwise
+rewrites `/create`, `/tn`, etc. into bogus Windows paths since they look
+like Unix-style absolute paths. Any other `schtasks` command below needs
+the same prefix.
 
 This registers two scheduled tasks that start automatically the moment you
 log into Windows and keep running in the background (via `pythonw`, so no
@@ -355,13 +361,13 @@ A few things worth knowing:
 - **Run the two `schtasks /create` commands only once** - re-running them
   (with `/f`) just re-registers the same task, harmless but unnecessary.
 - **To trigger a task immediately** instead of waiting for your next
-  logon: `schtasks /run /tn "TradeAgentDashboard"`.
-- **To stop everything**: `schtasks /end /tn "TradeAgentDashboard"` and
-  `schtasks /end /tn "TradeAgentScanLoop"` (stops the running process;
-  they'll start again at your next logon unless you also disable them).
+  logon: `MSYS_NO_PATHCONV=1 schtasks /run /tn "TradeAgentDashboard"`.
+- **To stop everything**: `MSYS_NO_PATHCONV=1 schtasks /end /tn "TradeAgentDashboard"`
+  and the same for `TradeAgentScanLoop` (stops the running process; they'll
+  start again at your next logon unless you also disable them).
 - **To remove the scheduled tasks entirely**:
-  `schtasks /delete /tn "TradeAgentDashboard" /f` and the same for
-  `TradeAgentScanLoop`.
+  `MSYS_NO_PATHCONV=1 schtasks /delete /tn "TradeAgentDashboard" /f` and the
+  same for `TradeAgentScanLoop`.
 - Since this is a Task Scheduler entry rather than a shell you launched
   yourself, it won't have your interactive shell's exported environment
   variables - `.env` is loaded explicitly by both entry-point scripts now,

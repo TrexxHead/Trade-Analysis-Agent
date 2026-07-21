@@ -94,6 +94,34 @@ def compute_r_multiple_stats(trades: list[dict]) -> dict:
     }
 
 
+def compute_composite_score(trades: list[dict], flags: list[dict]) -> dict | None:
+    """A simple, transparent 0-100 blend of profitability, win rate, and
+    discipline (share of trades with no rule violation) - the same idea as
+    a trade journal's composite "score" (e.g. TradeZella's Zella Score), but
+    with an explicit, inspectable formula rather than a proprietary one.
+    This is NOT a validated statistical measure of edge - it's a single
+    at-a-glance number for "how's this going overall", nothing more.
+    """
+    if not trades:
+        return None
+    stats = compute_period_stats(trades)
+    profit_factor = stats["profit_factor"]
+    # A profit factor of 2.0+ maxes out this component; None (no losing
+    # trades at all yet) also maxes out, since there's nothing dragging it down.
+    profit_component = 100.0 if profit_factor is None else min(profit_factor / 2.0, 1.0) * 100
+    win_rate_component = stats["win_rate"] * 100
+    trade_ids = {t["id"] for t in trades}
+    flagged_ids = {f["trade_id"] for f in flags if f["trade_id"] in trade_ids}
+    discipline_component = (1 - len(flagged_ids) / len(trade_ids)) * 100
+    composite = (profit_component + win_rate_component + discipline_component) / 3
+    return {
+        "composite": round(composite, 1),
+        "profit_component": round(profit_component, 1),
+        "win_rate_component": round(win_rate_component, 1),
+        "discipline_component": round(discipline_component, 1),
+    }
+
+
 def _breakdown(trades: list[dict], key_fn) -> list[dict]:
     groups: dict = {}
     for t in trades:

@@ -213,6 +213,12 @@ running on. Pages:
   (color-coded green/orange/red the same way prop-firm dashboards do,
   warning before you breach `config/rules.yaml`'s `max_daily_loss_pct`,
   not after).
+- **Charts** - a candlestick chart (any configured MT4/5 instrument,
+  selectable timeframe) with your trade entries/exits marked on it,
+  via a small `/api/candles/<symbol>` JSON endpoint and
+  [lightweight-charts](https://github.com/tradingview/lightweight-charts)
+  loaded from a CDN - needs normal internet access (for the CDN script)
+  in addition to `METAAPI_TOKEN`/`METAAPI_ACCOUNT_ID`.
 - **Scanner** - the last known signal state per watched instrument (setup /
   no setup / error), as of the most recent `run_scan.py` run - not a live
   call, see "Scanning multiple instruments" above.

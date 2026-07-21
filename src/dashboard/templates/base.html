@@ -204,6 +204,7 @@
     </div>
     <nav class="sidenav">
       <a href="/" class="{{ 'active' if active == 'index' }}">Overview</a>
+      <a href="/charts" class="{{ 'active' if active == 'charts' }}">Charts</a>
       <a href="/scanner" class="{{ 'active' if active == 'scanner' }}">Scanner</a>
       <a href="/positions" class="{{ 'active' if active == 'positions' }}">Positions</a>
       <a href="/calendar" class="{{ 'active' if active == 'calendar' }}">Calendar</a>
@@ -230,6 +231,7 @@
   <div class="main-col">
     {% set page_meta = {
       'index':     ('Overview', 'Account performance at a glance'),
+      'charts':    ('Charts', 'Price action with your trade markers'),
       'scanner':   ('Scanner', 'Signal state as of the last scan'),
       'positions': ('Positions', 'Live open positions on your MT4/5 account'),
       'calendar':  ('Calendar', 'Daily P&L by day'),

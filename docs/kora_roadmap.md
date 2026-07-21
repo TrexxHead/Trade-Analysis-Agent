@@ -37,25 +37,31 @@ doesn't search).
 Lowest risk, highest immediate value - extends what already works
 without introducing new infra.
 
+**Done:**
+- **Candlestick chart page** (`/charts`) - lightweight-charts (CDN)
+  rendering OHLC from a new `/api/candles/<symbol>` endpoint, with
+  trade entry/exit markers overlaid from stored trades. Works for any
+  configured `mt4_mt5` instrument, not just XAUUSD. Note: this
+  couldn't be visually verified end-to-end in the sandboxed dev
+  environment this was built in (the CDN script and MetaApi calls are
+  both network-restricted there) - verify it renders correctly on a
+  real machine with normal internet access before relying on it.
+- **Composite performance score** (`compute_composite_score` in
+  `src/analysis/metrics.py`, shown on Overview) - a simple, transparent
+  0-100 blend of profit factor, win rate, and discipline (share of
+  trades with no rule violation). Explicitly documented as not a
+  validated edge metric, just an at-a-glance number.
+
+**Still open:**
 1. **Auto-journal.** Attach the candle context (a small OHLC snapshot
    around entry/exit) to each closed trade automatically, so trade
-   review doesn't depend on remembering what the chart looked like.
+   review doesn't depend on remembering what the chart looked like -
+   the new `/charts` page covers this manually (pick the symbol, find
+   the trade markers) but doesn't yet attach a saved snapshot per trade.
    Needs: store a compact candle window per trade at close time
    (`fetch_candles` already exists); a small `trade_charts` table.
-2. **Canvas/candlestick chart page.** A real chart for the active
-   symbol (XAUUSD to start), using `fetch_candles` for OHLC data and
-   plotting proposal/trade markers on it. This is the biggest visible
-   gap versus the Kora brief's "Charts" screen and versus TradingView-
-   style platforms generally. Recommend a lightweight canvas-based
-   renderer (e.g. lightweight-charts) rather than building an SVG
-   candlestick renderer from scratch.
-3. **Correlation/session structure notes.** Nothing to build yet -
-   this folds into the chart page once it exists (session highlight
-   bands using the strategy research's session windows).
-4. **Composite performance score.** A single 0-100ish number combining
-   win rate, profit factor, and rule-violation frequency (from
-   `config/dashboard_feature_research.md`'s "Zella Score" finding) -
-   pure computation over data we already have, no new ingestion.
+2. **Correlation/session structure notes** on the chart page - session
+   highlight bands using the strategy research's session windows.
 
 ## Phase 2 - Multi-instrument
 

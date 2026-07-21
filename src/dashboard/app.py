@@ -18,13 +18,14 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
-from flask import Flask, Response, flash, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from src.analysis.metrics import (
     breakdown_by_emotion,
     breakdown_by_hour,
     breakdown_by_setup,
     breakdown_by_weekday,
+    compute_composite_score,
     compute_daily_progress,
     compute_period_stats,
     compute_r_multiple_stats,
@@ -169,6 +170,7 @@ def index():
         active="index",
         stats=stats,
         r_stats=r_stats,
+        composite=compute_composite_score(trades, flags),
         daily_loss=_today_loss_status(trades),
         mistake_counts=sorted(mistake_counts.items(), key=lambda kv: -kv[1])[:5],
         equity=_build_equity_svg(equity_points),
@@ -289,6 +291,60 @@ def positions_view():
             print(f"Failed to fetch open positions: {e}", file=sys.stderr)
             error = f"Couldn't reach MetaApi: {e}"
     return render_template("positions.html", active="positions", positions=positions, error=error)
+
+
+@app.route("/charts")
+def charts_view():
+    strategy_cfg = yaml.safe_load(STRATEGY_PATH.read_text())
+    symbols = [i["symbol"] for i in strategy_cfg["instruments"] if i["platform"] == "mt4_mt5"]
+    selected = request.args.get("symbol") or (symbols[0] if symbols else None)
+    return render_template("charts.html", active="charts", symbols=symbols, selected=selected)
+
+
+@app.route("/api/candles/<symbol>")
+def api_candles(symbol):
+    if not (os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID")):
+        return jsonify({"error": "METAAPI_TOKEN / METAAPI_ACCOUNT_ID not configured - see .env.example."}), 503
+
+    timeframe = request.args.get("timeframe", "H1")
+    count = request.args.get("count", 300, type=int)
+    try:
+        from src.ingest.metatrader import fetch_candles
+        candles = fetch_candles(symbol, timeframe, count)
+    except Exception as e:
+        print(f"Failed to fetch candles for {symbol}: {e}", file=sys.stderr)
+        return jsonify({"error": str(e)}), 502
+
+    bars = [
+        {
+            "time": int(_parse_time(c["time"]).timestamp()),
+            "open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"],
+        }
+        for c in candles
+    ]
+
+    conn = _conn()
+    trades = [t for t in get_trades(conn, source="mt4_mt5") if t["symbol"] == symbol]
+    markers = []
+    for t in trades:
+        is_buy = t["direction"] == "buy"
+        markers.append({
+            "time": int(_parse_time(t["open_time"]).timestamp()),
+            "position": "belowBar" if is_buy else "aboveBar",
+            "color": "#93c93f" if is_buy else "#e0655f",
+            "shape": "arrowUp" if is_buy else "arrowDown",
+            "text": f"open {t['direction']}",
+        })
+        markers.append({
+            "time": int(_parse_time(t["close_time"]).timestamp()),
+            "position": "aboveBar" if is_buy else "belowBar",
+            "color": "#93c93f" if t["pnl"] >= 0 else "#e0655f",
+            "shape": "circle",
+            "text": f"{t['pnl']:+.2f}",
+        })
+    markers.sort(key=lambda m: m["time"])
+
+    return jsonify({"bars": bars, "markers": markers})
 
 
 @app.route("/insights")

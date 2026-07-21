@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Charts - Trade Analysis Agent{% endblock %}
+{% block content %}
+<h1>Charts</h1>
+
+{% if not symbols %}
+<div class="card empty">No mt4_mt5 instruments configured in config/strategy.yaml.</div>
+{% else %}
+<div style="display:flex; gap:8px; margin-bottom:16px; align-items:center;">
+  <select id="symbol-select" style="width:auto; margin-top:0;">
+    {% for s in symbols %}
+    <option value="{{ s }}" {{ 'selected' if s == selected }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select id="timeframe-select" style="width:auto; margin-top:0;">
+    {% for tf in ['M15', 'M30', 'H1', 'H4', 'D1'] %}
+    <option value="{{ tf }}" {{ 'selected' if tf == 'H1' }}>{{ tf }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="card">
+  <div id="chart-error" class="empty" style="display:none;"></div>
+  <div id="chart-container" style="height:520px;"></div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function () {
+  var container = document.getElementById('chart-container');
+  var errorBox = document.getElementById('chart-error');
+  var symbolSelect = document.getElementById('symbol-select');
+  var timeframeSelect = document.getElementById('timeframe-select');
+
+  var chart = LightweightCharts.createChart(container, {
+    layout: { background: { color: 'transparent' }, textColor: 'rgba(230,237,233,.65)' },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,.05)' },
+      horzLines: { color: 'rgba(255,255,255,.05)' },
+    },
+    rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
+    timeScale: { borderColor: 'rgba(255,255,255,.1)', timeVisible: true },
+    autoSize: true,
+  });
+  var series = chart.addCandlestickSeries({
+    upColor: '#93c93f', downColor: '#e0655f', borderVisible: false,
+    wickUpColor: '#93c93f', wickDownColor: '#e0655f',
+  });
+
+  function load() {
+    var symbol = symbolSelect.value;
+    var timeframe = timeframeSelect.value;
+    errorBox.style.display = 'none';
+    fetch('/api/candles/' + encodeURIComponent(symbol) + '?timeframe=' + timeframe + '&count=300')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          errorBox.textContent = data.error;
+          errorBox.style.display = 'block';
+          series.setData([]);
+          return;
+        }
+        series.setData(data.bars);
+        series.setMarkers(data.markers || []);
+        chart.timeScale().fitContent();
+      })
+      .catch(function (e) {
+        errorBox.textContent = 'Failed to load candles: ' + e;
+        errorBox.style.display = 'block';
+      });
+  }
+
+  symbolSelect.addEventListener('change', function () {
+    var url = new URL(window.location);
+    url.searchParams.set('symbol', symbolSelect.value);
+    window.history.replaceState({}, '', url);
+    load();
+  });
+  timeframeSelect.addEventListener('change', load);
+
+  load();
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -37,6 +37,12 @@
     <div class="value {{ 'pos' if r_stats.expectancy_r >= 0 else 'neg' }}">{{ '%+.2fR' % r_stats.expectancy_r }}</div>
   </div>
   {% endif %}
+  {% if composite %}
+  <div class="stat-tile" title="Profitability {{ composite.profit_component }} / Win rate {{ composite.win_rate_component }} / Discipline {{ composite.discipline_component }} - equal-weighted average. Not a validated edge metric, just an at-a-glance blend.">
+    <div class="label">Composite score</div>
+    <div class="value">{{ composite.composite }}<span style="font-size:13px; color:var(--muted);">/100</span></div>
+  </div>
+  {% endif %}
 </div>
 
 {% if daily_loss %}

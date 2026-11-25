@@ -1,7 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Mistakes - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Mistakes</h1>
+<div class="screen legacy">
 
 <h2>By rule</h2>
 <div class="card">
@@ -39,5 +38,6 @@
   {% else %}
   <div class="empty">Nothing flagged yet.</div>
   {% endif %}
+</div>
 </div>
 {% endblock %}

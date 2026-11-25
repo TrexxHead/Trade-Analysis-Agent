@@ -1,7 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Backtests - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Backtests</h1>
+<div class="screen legacy">
 
 <div class="card">
 {% if runs %}
@@ -28,5 +27,6 @@
 {% else %}
 <div class="empty">No backtests run yet. Try <code>scripts/run_backtest.py</code>.</div>
 {% endif %}
+</div>
 </div>
 {% endblock %}

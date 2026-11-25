@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen">
+  {% if not feed.online and not n_trades %}
+  <div class="warn"><i data-lucide="plug-zap"></i><span>Nothing to show yet. Start the Kora service (<span class="mono">python scripts/run_kora.py</span>) for live account data and analysis, and run <span class="mono">scripts/run_ingest.py</span> to pull your trade history. To preview the hub without a broker connection, run the service with <span class="mono">KORA_DATA_SOURCE=sim</span>.</span></div>
+  {% endif %}
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:13px">
+    <div class="stat"><div class="lbl-up">Equity</div><div class="v" data-live="equity">{{ D.money(acct.equity) }}</div><div class="s" data-live="balance">Balance {{ D.money(acct.balance) }}</div></div>
+    <div class="stat"><div class="lbl-up">Daily P/L</div><div class="v c-{{ D.tone(acct.day_pl) }}" data-live="daypl">{{ D.smoney(acct.day_pl) }}</div><div class="s">{% if acct.sod %}vs start-of-day equity {{ D.money(acct.sod) }}{% else %}realized today + open{% endif %}</div></div>
+    <div class="stat"><div class="lbl-up">Open P/L</div><div class="v c-{{ D.tone(acct.open_pl) }}" data-live="openpl">{{ D.smoney(acct.open_pl) }}</div><div class="s">{{ acct.positions|length }} position{{ '' if acct.positions|length == 1 else 's' }}</div></div>
+    <div class="stat"><div class="lbl-up">Free margin</div><div class="v" data-live="freemargin">{{ D.money(acct.free_margin) }}</div><div class="s">Margin used {{ D.money(acct.margin) }}</div></div>
+    <div class="stat"><div class="lbl-up">Max drawdown</div><div class="v c-r">{{ D.pct(q.max_dd_pct) if q.max_dd_pct is defined and q.max_dd_pct is not none else '—' }}</div><div class="s">Closed-trade balance curve</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v">{{ D.pct(q.win_rate, 0) if q.win_rate is defined else '—' }}</div><div class="s">{{ q.trades or 0 }} trades · PF {{ '%.2f'|format(q.pf) if q.pf else '—' }}</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(275px,1fr);align-items:stretch">
+    <div class="panel" style="padding:18px 20px">
+      {% set eq = D.svg_path(curve) %}
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+        <h3 class="h3 lg">Equity curve</h3>
+        {% if feed.online %}<span class="mono c-g" style="display:inline-flex;align-items:center;gap:5px;font-family:var(--font-display);font-weight:600;font-size:10px;letter-spacing:.08em"><span class="dot bg-g" style="width:6px;height:6px;animation:kpulse 1.6s infinite"></span>LIVE</span>{% endif %}
+        {% if curve|length > 1 %}<span class="mono c-{{ D.tone(curve[-1] - curve[0]) }}" style="margin-left:auto;font-size:11px">{{ D.smoney(curve[-1] - curve[0]) }} over period</span>{% endif %}
+      </div>
+      {% if eq.line %}
+      <svg viewBox="0 0 600 190" preserveAspectRatio="none" style="width:100%;height:225px;display:block">
+        <defs><linearGradient id="keq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(147,201,63,.26)"></stop><stop offset="1" stop-color="rgba(147,201,63,0)"></stop></linearGradient></defs>
+        <line x1="0" y1="47" x2="600" y2="47" stroke="rgba(255,255,255,.05)"></line>
+        <line x1="0" y1="95" x2="600" y2="95" stroke="rgba(255,255,255,.05)"></line>
+        <line x1="0" y1="142" x2="600" y2="142" stroke="rgba(255,255,255,.05)"></line>
+        <path d="{{ eq.area }}" fill="url(#keq)"></path>
+        <path d="{{ eq.line }}" fill="none" stroke="#93c93f" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <div class="mono" style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:rgba(230,237,233,.5)">
+        <span>High {{ D.money(eq.hi) }}</span><span>Low {{ D.money(eq.lo) }}</span><span style="margin-left:auto">{{ curve_label }}</span>
+      </div>
+      {% else %}
+      <div class="empty" style="height:225px;display:flex;align-items:center;justify-content:center">No equity history yet — it builds from Kora's account snapshots (every 5 min) or your ingested trades.</div>
+      {% endif %}
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      {% set st = feed.state %}
+      <div class="panel hero">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="dot bg-{{ {'RUNNING':'g','PAUSED':'a','STOPPED':'r'}.get(st,'m') }}" style="width:9px;height:9px;animation:kpulse 1.8s infinite"></span>
+          <span style="font-family:var(--font-display);font-weight:800;font-size:14px;letter-spacing:.06em;color:#fff">KORA · {{ st }}</span>
+          <span class="tag" style="margin-left:auto;background:rgba(255,255,255,.08);letter-spacing:.08em">Analysis only</span>
+        </div>
+        {% if top %}
+        <div style="margin-top:12px;font-size:12px;color:rgba(230,237,233,.65)">Top opportunity</div>
+        <div style="font-family:var(--font-display);font-weight:700;font-size:15px;color:#fff;margin-top:2px">
+          {% if top.candidates %}{{ top.candidates[0].direction|title }} {{ top.code }} · {{ top.candidates[0].setup_name }}{% else %}{{ top.bias }} {{ top.code }} · no setup yet{% endif %}
+        </div>
+        {% set conf = top.candidates[0].confidence if top.candidates else top.confidence %}
+        <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+          <div class="bar" style="flex:1;background:rgba(255,255,255,.1)"><i class="grad" style="width:{{ conf }}%"></i></div>
+          <span class="mono c-g" style="font-weight:600;font-size:12px">{{ conf }}%</span>
+        </div>
+        <div style="font-size:10.5px;color:rgba(230,237,233,.5);margin-top:4px">{{ 'Setup confidence' if top.candidates else 'Bias conviction' }} · regime: <span class="c-b">{{ top.regime.primary }}</span></div>
+        {% if decisions %}<div class="mono" style="margin-top:12px;padding:9px 11px;background:rgba(0,0,0,.25);border-radius:11px;font-size:11px;color:rgba(230,237,233,.72)"><span data-localtime="{{ decisions[0].created_at }}"></span> — {{ decisions[0].action }}</div>{% endif %}
+        {% else %}
+        <div style="margin-top:12px;font-size:12px;color:rgba(230,237,233,.65);line-height:1.6">No analysis yet. Start the Kora service and it will break down all {{ search_index|selectattr('kind','equalto','instrument')|list|length }} instruments within a minute.</div>
+        {% endif %}
+        <div style="margin-top:12px"><a class="btn-inv" href="/kora">Open control center</a></div>
+      </div>
+
+      <div class="panel" style="padding:15px 18px">
+        <h3 class="h3" style="margin-bottom:10px">Sessions <span class="note" style="font-weight:500">(UTC)</span></h3>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          {% for s in sessions %}
+          <div style="display:flex;align-items:center;font-size:12.5px"><span style="color:rgba(230,237,233,.7)">{{ s.name }}</span><span class="mono c-{{ s.tone }}" style="margin-left:auto;font-size:11.5px{% if s.tone == 'muted' %};color:var(--muted){% endif %}">{{ s.state }}</span></div>
+          {% endfor %}
+        </div>
+        <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:10.5px;color:var(--subtle)">Synthetic indices trade 24/7 — no session gaps.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.55fr) minmax(275px,1fr);align-items:stretch">
+    <div class="panel">
+      <div class="ph"><h3 class="h3 lg">Open positions</h3><a href="/positions" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:11.5px">Manage →</a></div>
+      {% for p in positions %}
+      <a href="/positions" class="drow" style="display:flex;gap:12px;padding:9px 8px;border-radius:10px">
+        <span class="mono" style="font-weight:600;font-size:12.5px;color:#fff;width:76px">{{ p.code }}</span>
+        <span class="dir {{ p.direction }}">{{ p.direction|upper }}</span>
+        <span class="mono muted" style="font-size:11.5px"><span>{{ p.volume }}</span> · {{ p.entry_s }} → <span data-live="pos:{{ p.id }}:cur">{{ p.cur_s }}</span></span>
+        <span class="mono c-{{ p.pnl_t }}" style="margin-left:auto;font-weight:600;font-size:12.5px" data-live="pos:{{ p.id }}:pnl">{{ p.pnl_s }}</span>
+      </a>
+      {% else %}
+      <div class="empty">{{ 'No open positions.' if feed.online else 'Positions appear here once the Kora service is running.' }}</div>
+      {% endfor %}
+    </div>
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:12px">Limits &amp; quality</h3>
+      <div class="split"><span>Daily loss limit ({{ risk.max_daily_pct }}%)</span><span class="mono">{{ D.money(risk.loss_used, 0) }} / {{ D.money(risk.loss_limit, 0) }}</span></div>
+      <div class="bar" style="margin:6px 0 12px"><i class="bg-{{ 'r' if risk.loss_limit and risk.loss_used / risk.loss_limit > 0.9 else 'a' if risk.loss_limit and risk.loss_used / risk.loss_limit > 0.7 else 'g' }}" style="width:{{ [100, (risk.loss_used / risk.loss_limit * 100) if risk.loss_limit else 0]|min }}%"></i></div>
+      <div class="split"><span>Trailing drawdown buffer ({{ risk.max_dd_pct }}%)</span><span class="mono">{{ '%.0f%% used'|format(risk.dd_used) if risk.dd_used is not none else '—' }}</span></div>
+      <div class="bar" style="margin:6px 0 14px"><i class="bg-b" style="width:{{ [100, risk.dd_used or 0]|min }}%"></i></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:9px">
+        <div class="tile"><div class="v">{{ D.pct(q.win_rate, 0) if q.win_rate is defined else '—' }}</div><div class="l">Win rate</div></div>
+        <div class="tile"><div class="v">{{ '%.2f'|format(q.pf) if q.pf else '—' }}</div><div class="l">Profit factor</div></div>
+        <div class="tile"><div class="v">{{ '%.2f'|format(q.sharpe) if q.sharpe else '—' }}</div><div class="l">Sharpe</div></div>
+        <div class="tile"><div class="v">{{ '1:%.1f'|format(q.avg_rr) if q.avg_rr else '—' }}</div><div class="l">Avg RR</div></div>
+        <div class="tile"><div class="v c-{{ D.tone(q.expectancy_r if q.expectancy_r is not none else q.expectancy_usd) }}">{% if q.expectancy_r is not none and q.expectancy_r is defined %}{{ '%+.2fR'|format(q.expectancy_r) }}{% elif q.expectancy_usd is defined %}{{ D.smoney(q.expectancy_usd, 0) }}{% else %}—{% endif %}</div><div class="l">Expectancy</div></div>
+        <div class="tile"><div class="v c-{{ risk.label_tone }}">{{ risk.score }}</div><div class="l">Risk score</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

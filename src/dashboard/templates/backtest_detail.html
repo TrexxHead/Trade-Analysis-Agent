@@ -1,7 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ filename }} - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>{{ data.symbol }} - {{ filename }}</h1>
+<div class="screen legacy">
 <a href="/backtests" class="pill muted">&larr; all backtests</a>
 
 <div class="stat-grid" style="margin-top:16px;">
@@ -49,5 +48,6 @@
 {% else %}
 <div class="empty">No completed trades in this run.</div>
 {% endif %}
+</div>
 </div>
 {% endblock %}

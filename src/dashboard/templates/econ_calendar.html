@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen" style="gap:14px">
+  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+    {% for k, l in [('all','All'),('High','High impact'),('Medium','Medium')] %}<a href="/calendar?imp={{ k }}" class="fchip {{ 'on' if imp == k }}">{{ l }}</a>{% endfor %}
+    <span class="note" style="margin-left:auto">Times in your local timezone · Kora flags gold &amp; FX setups within 2h of red events · source: ForexFactory weekly feed</span>
+  </div>
+  <div class="info"><i data-lucide="info"></i><span>Synthetic indices (Step, Volatility, Boom/Crash) trade 24/7 and are unaffected by macro releases — the calendar only gates your gold, silver and FX analysis ({{ watched|sort|join(', ') }}).</span></div>
+  {% for g in groups %}
+  <div class="panel flush">
+    <div style="padding:12px 18px;font-family:var(--font-display);font-weight:700;font-size:12.5px;color:#fff;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)">{{ g.day }}</div>
+    {% for e in g.events %}
+    <div style="display:grid;grid-template-columns:58px 52px 1fr 92px 100px 100px 110px;gap:10px;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,.045);align-items:center;{{ 'opacity:.55' if e.currency not in watched }}">
+      <span class="mono" style="font-size:12px;color:rgba(230,237,233,.6)" data-localtime="{{ e.time }}"></span>
+      <span class="mono" style="font-weight:600;font-size:11px;background:rgba(255,255,255,.07);border-radius:6px;padding:3px 0;text-align:center">{{ e.currency }}</span>
+      <span style="font-size:12.5px">{{ e.title }}</span>
+      <span style="font-family:var(--font-display);font-weight:600;font-size:10px;letter-spacing:.06em;border-radius:999px;padding:3px 0;text-align:center;{% if e.impact == 'High' %}color:var(--r);background:rgba(224,101,95,.13){% elif e.impact == 'Medium' %}color:var(--a);background:rgba(253,184,19,.12){% else %}color:var(--muted);background:rgba(255,255,255,.06){% endif %}">{{ e.impact }}</span>
+      <span class="mono" style="font-size:11.5px;color:var(--muted)">Fcst {{ e.forecast or '—' }}</span>
+      <span class="mono" style="font-size:11.5px;color:var(--muted)">Prev {{ e.previous or '—' }}</span>
+      <span class="mono c-a" style="font-size:11px;text-align:right" data-countdown="{{ e.time }}"></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><div class="empty">No calendar events loaded — the feed may be unreachable from this machine. The Kora service retries hourly.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}

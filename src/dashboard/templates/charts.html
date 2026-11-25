@@ -1,85 +1,77 @@
 {% extends "base.html" %}
-{% block title %}Charts - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Charts</h1>
-
-{% if not symbols %}
-<div class="card empty">No mt4_mt5 instruments configured in config/strategy.yaml.</div>
-{% else %}
-<div style="display:flex; gap:8px; margin-bottom:16px; align-items:center;">
-  <select id="symbol-select" style="width:auto; margin-top:0;">
-    {% for s in symbols %}
-    <option value="{{ s }}" {{ 'selected' if s == selected }}>{{ s }}</option>
+<div class="screen" style="padding-top:16px;gap:12px">
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    {% for r in rows %}
+    <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="mono" style="font-weight:600;font-size:12px;padding:6px 12px;border-radius:9px;{% if r.code == code %}color:var(--g);background:rgba(147,201,63,.14);border:1px solid rgba(147,201,63,.4){% else %}color:var(--muted);border:1px solid rgba(255,255,255,.08){% endif %}">{{ r.code }}</a>
     {% endfor %}
-  </select>
-  <select id="timeframe-select" style="width:auto; margin-top:0;">
-    {% for tf in ['M15', 'M30', 'H1', 'H4', 'D1'] %}
-    <option value="{{ tf }}" {{ 'selected' if tf == 'H1' }}>{{ tf }}</option>
-    {% endfor %}
-  </select>
+    <div style="margin-left:auto;display:flex;gap:4px">
+      {% for t in ['M1','M5','M15','H1','H4','D1'] %}
+      <a href="/charts?code={{ code }}&tf={{ t }}" class="mono" style="font-size:11.5px;padding:5px 10px;border-radius:8px;{% if t == tf %}color:#fff;background:rgba(255,255,255,.1){% else %}color:var(--muted){% endif %}">{{ t }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% set cur = (rows|selectattr('code','equalto',code)|list or [None])[0] %}
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) 250px;gap:14px;align-items:stretch">
+    <div class="panel sunk" style="border-radius:16px;padding:14px 16px">
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+        <span style="font-family:var(--font-display);font-weight:700;font-size:15px;color:#fff">{{ meta.name if meta else code }} · {{ tf }}</span>
+        {% if cur %}
+        <span class="mono c-{{ cur.chg_t }}" style="font-weight:600;font-size:14px" data-live="q:{{ code }}:price">{{ cur.price_s }}</span>
+        <span class="mono c-{{ cur.chg_t }}" style="font-size:11.5px"><span data-live="q:{{ code }}:chg">{{ cur.chg_s }}</span> today</span>
+        {% endif %}
+        <span class="mono faint" style="font-size:11px" id="ohlc"></span>
+        <div style="margin-left:auto;display:flex;gap:6px" id="ind-btns">
+          {% for k, l, c in [('vwap','VWAP','b'),('ema','EMA 20','a'),('levels','S/R','g'),('kora','KORA PLAN','b')] %}
+          <button data-ind="{{ k }}" class="ind on" data-c="{{ c }}" style="font-family:var(--font-display);font-weight:600;font-size:10.5px;letter-spacing:.06em;padding:4px 10px;border-radius:999px;cursor:pointer;white-space:nowrap">{{ l }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <canvas id="chart" style="width:100%;height:520px;display:block;cursor:crosshair"></canvas>
+      <div id="chart-msg" class="empty" style="display:none"></div>
+      <div class="mono" style="display:flex;gap:16px;margin-top:8px;font-size:10.5px;color:var(--subtle);flex-wrap:wrap">
+        <span class="c-b">— VWAP</span><span class="c-a">— EMA 20</span><span>▬ Kora S/R levels</span><span>Entry / SL / TP overlaid for open positions</span><span id="plan-note" class="c-b"></span>
+      </div>
+    </div>
+    <div class="panel" style="border-radius:16px;padding:13px 6px 13px 14px;display:flex;flex-direction:column">
+      <h3 class="h3" style="margin-bottom:8px">Watchlist</h3>
+      <div style="overflow-y:auto;flex:1;padding-right:8px">
+        {% for r in rows %}
+        <a href="/charts?code={{ r.code }}&tf={{ tf }}" style="display:flex;align-items:center;padding:7px 8px;border-radius:9px;color:inherit;{% if r.code == code %}background:rgba(255,255,255,.05){% endif %}" onmouseover="this.style.background='rgba(255,255,255,.05)'" onmouseout="this.style.background='{{ 'rgba(255,255,255,.05)' if r.code == code else 'transparent' }}'">
+          <div><div class="mono" style="font-weight:600;font-size:12px;color:#fff">{{ r.code }}</div><div style="font-size:9.5px;color:var(--faint)">{{ r.name }}</div></div>
+          <div style="margin-left:auto;text-align:right">
+            <div class="mono" style="font-size:12px" data-live="q:{{ r.code }}:price">{{ r.price_s }}</div>
+            <div class="mono c-{{ r.chg_t }}" style="font-size:10.5px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      <a href="/kora/{{ code }}" class="obtn b" style="margin:10px 8px 0 0;justify-content:center">Kora breakdown for {{ code }} →</a>
+    </div>
+  </div>
 </div>
-
-<div class="card">
-  <div id="chart-error" class="empty" style="display:none;"></div>
-  <div id="chart-container" style="height:520px;"></div>
-</div>
-
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+{% block scripts %}
 <script>
-(function () {
-  var container = document.getElementById('chart-container');
-  var errorBox = document.getElementById('chart-error');
-  var symbolSelect = document.getElementById('symbol-select');
-  var timeframeSelect = document.getElementById('timeframe-select');
-
-  var chart = LightweightCharts.createChart(container, {
-    layout: { background: { color: 'transparent' }, textColor: 'rgba(230,237,233,.65)' },
-    grid: {
-      vertLines: { color: 'rgba(255,255,255,.05)' },
-      horzLines: { color: 'rgba(255,255,255,.05)' },
-    },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
-    timeScale: { borderColor: 'rgba(255,255,255,.1)', timeVisible: true },
-    autoSize: true,
-  });
-  var series = chart.addCandlestickSeries({
-    upColor: '#93c93f', downColor: '#e0655f', borderVisible: false,
-    wickUpColor: '#93c93f', wickDownColor: '#e0655f',
-  });
-
-  function load() {
-    var symbol = symbolSelect.value;
-    var timeframe = timeframeSelect.value;
-    errorBox.style.display = 'none';
-    fetch('/api/candles/' + encodeURIComponent(symbol) + '?timeframe=' + timeframe + '&count=300')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.error) {
-          errorBox.textContent = data.error;
-          errorBox.style.display = 'block';
-          series.setData([]);
-          return;
-        }
-        series.setData(data.bars);
-        series.setMarkers(data.markers || []);
-        chart.timeScale().fitContent();
-      })
-      .catch(function (e) {
-        errorBox.textContent = 'Failed to load candles: ' + e;
-        errorBox.style.display = 'block';
-      });
+(function(){
+  const K = window.KORA, code = {{ code|tojson }}, tf = {{ tf|tojson }};
+  const ohlc = document.getElementById('ohlc');
+  const chart = new K.KoraChart(document.getElementById('chart'), { onHover: (k) => {
+    if (!chart.data) return; const d = chart.data.digits > 4 ? 5 : chart.data.digits;
+    ohlc.textContent = `O ${K.fm(k.open,d)} · H ${K.fm(k.high,d)} · L ${K.fm(k.low,d)} · C ${K.fm(k.close,d)}`;
+  }});
+  const styleBtn = (b) => { const on = b.classList.contains('on'), c = K.COLORS[b.dataset.c];
+    b.style.color = on ? c : 'rgba(230,237,233,.55)'; b.style.background = on ? 'rgba(255,255,255,.06)' : 'transparent';
+    b.style.border = '1px solid ' + (on ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.08)'); };
+  K.$$('#ind-btns button').forEach((b) => { styleBtn(b); b.onclick = () => { b.classList.toggle('on'); chart.ind[b.dataset.ind] = b.classList.contains('on'); styleBtn(b); chart.draw(); }; });
+  async function load() {
+    const r = await fetch(`/api/chart/${code}?tf=${tf}`); const d = await r.json();
+    if (d.error) { const m = document.getElementById('chart-msg'); m.textContent = d.error; m.style.display = 'block'; document.getElementById('chart').style.display = 'none'; return; }
+    chart.set(d);
+    if (d.plan) document.getElementById('plan-note').textContent = `Kora plan: ${d.plan.title} · ${d.plan.grade} · ${d.plan.confidence}%`;
   }
-
-  symbolSelect.addEventListener('change', function () {
-    var url = new URL(window.location);
-    url.searchParams.set('symbol', symbolSelect.value);
-    window.history.replaceState({}, '', url);
-    load();
-  });
-  timeframeSelect.addEventListener('change', load);
-
-  load();
+  load(); setInterval(load, 60000);
+  K.onLive.push((d) => chart.live(d.quotes[code]));
 })();
 </script>
-{% endif %}
 {% endblock %}

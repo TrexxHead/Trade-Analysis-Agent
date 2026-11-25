@@ -1,38 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Positions - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Open Positions</h1>
-
-<div class="card">
-{% if error %}
-<div class="empty">{{ error }}</div>
-{% elif positions %}
-<table>
-  <thead>
-    <tr>
-      <th>Opened</th><th>Symbol</th><th>Dir</th><th>Volume</th>
-      <th>Open</th><th>Current</th><th>SL</th><th>TP</th><th>P&amp;L</th><th>Swap</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in positions %}
-    <tr>
-      <td>{{ p.open_time[:16].replace('T',' ') }}</td>
-      <td>{{ p.symbol }}</td>
-      <td>{{ p.direction }}</td>
-      <td>{{ p.volume }}</td>
-      <td>{{ '%.5g' % p.open_price }}</td>
-      <td>{{ '%.5g' % p.current_price }}</td>
-      <td>{{ '%.5g' % p.stop_loss if p.stop_loss is not none else '—' }}</td>
-      <td>{{ '%.5g' % p.take_profit if p.take_profit is not none else '—' }}</td>
-      <td class="{{ 'pos' if p.profit >= 0 else 'neg' }}">{{ '%+.2f' % p.profit }}</td>
-      <td>{{ '%+.2f' % p.swap }}</td>
-    </tr>
+{% set cols = "22px 92px 62px 1fr 1fr 1fr 1fr 62px 110px 100px" %}
+<div class="screen" style="gap:14px">
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div class="mini"><span class="l">Open</span><div class="v">{{ pos|length }}</div></div>
+    <div class="mini"><span class="l">Unrealized P/L</span><div class="v c-{{ D.tone(acct.open_pl) }}" data-live="openpl">{{ D.smoney(acct.open_pl) }}</div></div>
+    <div class="mini"><span class="l">Margin used</span><div class="v">{{ D.money(acct.margin) }}</div></div>
+    <div class="mini" title="Sum of each position's loss-to-stop as % of equity (cap {{ risk.heat_cap }}%)"><span class="l">Portfolio heat</span><div class="v c-{{ 'r' if risk.heat and risk.heat > risk.heat_cap else 'a' }}">{{ D.pct(risk.heat) }}</div></div>
+    {% if risk.uncapped %}<div class="mini" style="border-color:rgba(224,101,95,.35)"><span class="l">No stop-loss</span><div class="v c-r">{{ risk.uncapped|length }}</div></div>{% endif %}
+  </div>
+  <div class="info"><i data-lucide="info"></i><span>Read-only view of your MT5 positions. Kora is analysis-only, so position management (closing, moving stops) stays in your MT5 terminal — each row shows how the trade sits against Kora's current analysis.</span></div>
+  <div class="panel flush">
+    <div class="hrow" style="grid-template-columns:{{ cols }}"><span></span><span>Symbol</span><span>Side</span><span>Entry</span><span>Current</span><span>Stop</span><span>Target</span><span>Size</span><span>Kora view</span><span style="text-align:right">Unrealized</span></div>
+    {% for p in pos %}
+    <div class="posbox">
+      <a class="drow" data-toggle=".posbox" style="grid-template-columns:{{ cols }}">
+        <span class="chev">▸</span>
+        <span class="mono" style="font-weight:600;font-size:12.5px;color:#fff">{{ p.code }}</span>
+        <span class="dir {{ p.direction }}" style="padding:3px 0">{{ p.direction|upper }}</span>
+        <span class="mono" style="font-size:12px;color:rgba(230,237,233,.7)">{{ p.entry_s }}</span>
+        <span class="mono" style="font-size:12px" data-live="pos:{{ p.id }}:cur">{{ p.cur_s }}</span>
+        <span class="mono c-r" style="font-size:12px">{{ p.sl_s }}</span>
+        <span class="mono c-g" style="font-size:12px">{{ p.tp_s }}</span>
+        <span class="mono" style="font-size:12px;color:rgba(230,237,233,.7)">{{ p.volume }}</span>
+        <span class="c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.kora.text if p.kora else '—' }}</span>
+        <span class="mono c-{{ p.pnl_t }}" style="font-weight:600;font-size:12.5px;text-align:right" data-live="pos:{{ p.id }}:pnl">{{ p.pnl_s }}</span>
+      </a>
+      <div class="posdetail" style="padding:4px 16px 16px 46px;gap:26px;flex-wrap:wrap;align-items:flex-end;background:var(--bg-sunk)">
+        <div><div class="note">Risk</div><div class="mono" style="font-size:12.5px">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'uncapped' }} of equity</div></div>
+        <div><div class="note">To stop</div><div class="mono c-r" style="font-size:12.5px">{{ D.smoney(p.to_stop) }}</div></div>
+        <div><div class="note">To target</div><div class="mono c-g" style="font-size:12.5px">{{ D.smoney(p.to_target) }}</div></div>
+        <div><div class="note">Duration</div><div class="mono" style="font-size:12.5px">{{ p.dur }}</div></div>
+        <div><div class="note">Swap</div><div class="mono" style="font-size:12.5px">{{ D.smoney(p.swap) }}</div></div>
+        <div><div class="note">Commission</div><div class="mono" style="font-size:12.5px">{{ D.smoney(p.commission) }}</div></div>
+        <div style="min-width:150px"><div class="note">Kora alignment</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div class="bar t5" style="flex:1;background:rgba(255,255,255,.1)"><i class="{{ 'grad' if not p.kora or p.kora.tone != 'r' else 'bg-r' }}" style="width:{{ p.kora.conf if p.kora else 0 }}%"></i></div><span class="mono c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:11px">{{ '%d%%'|format(p.kora.conf) if p.kora else '—' }}</span></div></div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <a class="obtn b" href="/kora/{{ p.code }}">Kora breakdown</a>
+          <a class="obtn" href="/charts?code={{ p.code }}&tf=H1">Chart</a>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">{{ 'No open positions.' if feed.online else 'Live positions stream in from the Kora service — start it with python scripts/run_kora.py.' }}</div>
     {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty">No open positions right now.</div>
-{% endif %}
+  </div>
+  <div class="panel">
+    <div class="ph"><h3 class="h3">Recently closed</h3><a href="/trades" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:11.5px">Full history →</a></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+      {% for t in closed %}
+      <a href="/trades/{{ t.id }}" style="background:rgba(255,255,255,.035);border-radius:11px;padding:9px 12px;display:flex;align-items:center;gap:9px;color:inherit">
+        <span class="mono faint" style="font-size:11px">{{ D.parse_dt(t.close_time).strftime('%b %d') }}</span>
+        <span class="mono" style="font-weight:600;font-size:12px" title="{{ t.symbol }}">{{ t.code }}</span>
+        <span class="mono c-{{ D.tone(t.pnl) }}" style="margin-left:auto;font-weight:600;font-size:12px">{{ D.smoney(t.pnl) }}</span>
+      </a>
+      {% else %}<div class="empty">No closed trades ingested yet — run <code>scripts/run_ingest.py</code>.</div>{% endfor %}
+    </div>
+  </div>
 </div>
+<style>.posdetail{display:none}.posbox.open .posdetail{display:flex}.posbox.open .drow{background:var(--bg-sunk)}</style>
 {% endblock %}

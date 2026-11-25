@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block page_title %}{{ meta.code }} — Kora breakdown{% endblock %}
+{% block page_sub %}{{ meta.name }} · {% if rep %}Analysed <span data-localtime="{{ rep._created_at }}" data-fmt="datetime"></span> · execution TF {{ rep.exec_tf }} · analysis only, your decision{% else %}No analysis yet{% endif %}{% endblock %}
+{% block content %}
+<div class="screen">
+  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+    <a href="/kora" class="obtn"><i data-lucide="arrow-left"></i>All instruments</a>
+    <a href="/charts?code={{ meta.code }}&tf={{ rep.exec_tf if rep else 'H1' }}" class="obtn b"><i data-lucide="candlestick-chart"></i>Chart with Kora's plan</a>
+    <a href="/insights?q={{ ('Give me your full breakdown of ' ~ meta.code ~ ' and the best way to trade it')|urlencode }}" class="obtn"><i data-lucide="sparkles"></i>Ask Kora about {{ meta.code }}</a>
+  </div>
+  {% if not rep %}
+  <div class="panel"><div class="empty">Kora hasn't analysed {{ meta.code }} yet. Start the service (<code>python scripts/run_kora.py</code>) or press “Analyse now” on the Kora page.</div></div>
+  {% else %}
+  {% set d = rep.digits %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:13px">
+    <div class="stat"><div class="lbl-up">Price</div><div class="v" data-live="q:{{ meta.code }}:price">{{ D.price(rep.price, d) }}</div><div class="s"><span data-live="q:{{ meta.code }}:chg">{{ D.pct(rep.day_change_pct, 2, True) if rep.day_change_pct is not none else '—' }}</span> today · ATR {{ D.price(rep.atr, d) }}</div></div>
+    <div class="stat"><div class="lbl-up">Bias</div><div class="v c-{{ 'g' if rep.bias == 'Bullish' else 'r' if rep.bias == 'Bearish' else 'a' }}">{{ rep.bias }}</div><div class="s">Conviction {{ rep.confidence }}% · score {{ rep.bias_score }}</div></div>
+    <div class="stat"><div class="lbl-up">Regime</div><div class="v c-b" style="font-size:17px">{{ rep.regime.primary }}</div><div class="s">{{ rep.regime.tags|join(' · ') or '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Timeframe alignment</div><div class="v">{{ rep.alignment }}</div><div class="s">D1 · H4 · H1 · M15 agreeing with bias</div></div>
+    <div class="stat"><div class="lbl-up">Best plan</div><div class="v" style="font-size:17px">{% if rep.candidates %}<span class="grade {{ rep.candidates[0].grade }}">{{ rep.candidates[0].grade }}</span> {{ rep.candidates[0].confidence }}%{% else %}None{% endif %}</div><div class="s">{{ rep.candidates|length }} setup{{ '' if rep.candidates|length == 1 else 's' }} detected</div></div>
+  </div>
+
+  <div class="{{ 'info' if rep.verdict_tone == 'g' else 'warn' }}" style="font-size:13px"><i data-lucide="{{ 'target' if rep.verdict_tone == 'g' else 'eye' }}"></i><span><b>Verdict.</b> {{ rep.verdict }}</span></div>
+
+  {% if rep.narrative %}
+  <div class="panel hero">
+    <div class="ph"><span style="width:26px;height:26px;border-radius:999px;background:var(--gradient-brand);display:flex;align-items:center;justify-content:center"><i data-lucide="bot" style="width:14px;height:14px;color:#fff"></i></span><h3 class="h3 lg">Kora's take</h3><span class="r">Written by Claude from this analysis</span></div>
+    <div style="font-size:13px;line-height:1.7;color:rgba(230,237,233,.82);white-space:pre-wrap">{{ rep.narrative }}</div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Entry plans</h3><span class="r">Ranked by calibrated confidence · ≥70% A-grade · 55–69% B · below 55% watch-only</span></div>
+    {% for c in rep.candidates %}
+    <div class="cand {{ c.grade }}" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="grade {{ c.grade }}">{{ c.grade }}</span>
+        <span style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#fff">{{ c.setup_name }}</span>
+        <span class="dir {{ c.direction }}">{{ c.direction|upper }}</span>
+        <span class="tag">{{ c.timeframe }} · {{ c.entry_type }} entry</span>
+        <span class="tag">{{ c.distance_atr }} ATR from price</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;min-width:160px">
+          <div class="bar" style="flex:1;background:rgba(255,255,255,.1)"><i class="grad" style="width:{{ c.confidence }}%"></i></div>
+          <span class="mono c-g" style="font-weight:600;font-size:12px">{{ c.confidence }}%</span>
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:12px">
+        <div class="tile"><div class="l">Entry</div><div class="v">{{ D.price(c.entry, d) }}</div></div>
+        <div class="tile"><div class="l">Stop loss</div><div class="v c-r">{{ D.price(c.stop, d) }}</div></div>
+        <div class="tile"><div class="l">Target 1 · {{ c.rr1 }}R</div><div class="v c-g">{{ D.price(c.tp1, d) }}</div></div>
+        <div class="tile"><div class="l">Target 2 · {{ c.rr2 }}R</div><div class="v c-g">{{ D.price(c.tp2, d) }}</div></div>
+        <div class="tile"><div class="l">Risk</div><div class="v">{{ c.risk_atr }} ATR</div></div>
+        <div class="tile"><div class="l">Rule score</div><div class="v">{{ c.score }}/100</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px">
+        <div><div class="lbl-up">Why</div><ul class="reasons">{% for x in c.confluence %}<li>{{ x }}</li>{% endfor %}</ul></div>
+        <div><div class="lbl-up">Against</div>{% if c.against %}<ul class="reasons neg">{% for x in c.against %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<div class="note" style="margin-top:6px">Nothing material flagged.</div>{% endif %}</div>
+      </div>
+      <div style="margin-top:12px;display:grid;gap:5px;font-size:12px;line-height:1.55;color:rgba(230,237,233,.72)">
+        <div><span class="c-b" style="font-weight:600">Trigger — </span>{{ c.trigger }}</div>
+        <div><span class="c-r" style="font-weight:600">Invalidation — </span>{{ c.invalidation }}</div>
+        <div><span class="c-a" style="font-weight:600">Track record — </span>{{ c.calibration.note }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">No setup meets its rules on {{ rep.exec_tf }} right now. {{ rep.verdict }}</div>
+    {% endfor %}
+  </div>
+
+  <div class="panel flush">
+    <div style="padding:14px 18px 4px"><h3 class="h3 lg">Technical breakdown</h3></div>
+    <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>TF</th><th>Trend</th><th>Score</th><th>Structure</th><th>RSI</th><th>ADX</th><th>MACD</th><th>Volatility</th><th>EMA 20 / 50 / 200</th><th>Support</th><th>Resistance</th></tr></thead>
+      <tbody>
+      {% for tf in ['D1','H4','H1','M15'] if rep.reads.get(tf) %}{% set r = rep.reads[tf] %}
+      <tr>
+        <td class="mono c-w">{{ tf }}</td>
+        <td><span class="tint {{ 'g' if r.direction == 'up' else 'r' if r.direction == 'down' else 'm' }}">{{ r.direction }}</span></td>
+        <td class="mono">{{ '%+.2f'|format(r.trend_score) if r.trend_score is not none else '—' }}</td>
+        <td class="mono">{{ r.structure }}</td>
+        <td class="mono {{ 'c-a' if r.rsi and (r.rsi > 70 or r.rsi < 30) }}">{{ r.rsi or '—' }}</td>
+        <td class="mono">{{ r.adx or '—' }} <span class="faint">{{ r.di_bias or '' }}</span></td>
+        <td class="mono" style="font-size:11.5px">{{ r.momentum or '—' }}</td>
+        <td class="mono" style="font-size:11.5px">{{ r.volatility }}{% if r.bb_squeeze %} · squeeze{% endif %}</td>
+        <td class="mono" style="font-size:11.5px">{{ D.price(r.ema20, d) }} / {{ D.price(r.ema50, d) }} / {{ D.price(r.ema200, d) }}</td>
+        <td class="mono c-g">{{ D.price(r.support, d) }}{% if r.support_touches %} <span class="faint">×{{ r.support_touches }}</span>{% endif %}</td>
+        <td class="mono c-r">{{ D.price(r.resistance, d) }}{% if r.resistance_touches %} <span class="faint">×{{ r.resistance_touches }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)">
+    <div class="panel">
+      <div class="ph"><h3 class="h3">Key levels</h3><span class="r">Within 6 ATR · distance in ATR</span></div>
+      {% for lv in rep.key_levels %}
+      <div class="lvl-row">
+        <span class="dot bg-{{ 'r' if lv.kind == 'resistance' else 'g' }}"></span>
+        <span class="mono" style="width:110px;color:#fff">{{ D.price(lv.price, d) }}</span>
+        <span class="muted" style="font-size:11px">{{ lv.tf }} {{ lv.kind }} · {{ lv.touches }} touch{{ 'es' if lv.touches != 1 }}</span>
+        <span class="mono c-{{ 'r' if lv.kind == 'resistance' else 'g' }}" style="margin-left:auto;font-size:11px">{{ '%+.2f'|format(lv.distance_atr) }}</span>
+      </div>
+      {% else %}<div class="empty">No clustered levels nearby.</div>{% endfor %}
+      {% if rep.prev_day %}<div class="note" style="margin-top:10px">Previous day — H <span class="mono">{{ D.price(rep.prev_day.high, d) }}</span> · L <span class="mono">{{ D.price(rep.prev_day.low, d) }}</span> · C <span class="mono">{{ D.price(rep.prev_day.close, d) }}</span></div>{% endif %}
+    </div>
+    <div class="panel">
+      <div class="ph"><h3 class="h3">Fundamentals</h3><span class="r">{% if rep.fundamentals.applicable %}Tilt: {{ rep.fundamentals.lean_text }}{% else %}Not applicable{% endif %}</span></div>
+      {% if rep.fundamentals.event_risk %}<div class="warn" style="margin-bottom:10px"><i data-lucide="alarm-clock"></i><span>{{ rep.fundamentals.event_risk.text }}</span></div>{% endif %}
+      <ul class="reasons" style="margin-bottom:10px">{% for n in rep.fundamentals.notes %}<li style="padding-left:0">{{ n }}</li>{% endfor %}</ul>
+      {% if rep.fundamentals.events %}
+      <table class="tbl" style="font-size:12px">
+        <thead><tr><th>When</th><th></th><th>Event</th><th>Impact</th><th>Fcst</th><th>Prev</th></tr></thead>
+        <tbody>{% for e in rep.fundamentals.events %}
+        <tr><td class="mono" data-localtime="{{ e.time }}" data-fmt="datetime"></td><td><span class="tint m">{{ e.currency }}</span></td><td>{{ e.title }}</td>
+          <td><span class="tint {{ 'r' if e.impact == 'High' else 'a' }}">{{ e.impact }}</span></td><td class="mono">{{ e.forecast or '—' }}</td><td class="mono">{{ e.previous or '—' }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div class="panel flush">
+      <div style="padding:14px 18px 4px" class="ph"><h3 class="h3">Setup track record on {{ meta.code }}</h3><span class="r">From scripts/train_kora.py</span></div>
+      {% if stats %}
+      <table class="tbl"><thead><tr><th>Setup</th><th>Dir</th><th>Signals</th><th>Hit TP1</th><th>Expectancy</th></tr></thead><tbody>
+        {% for k, s in stats|dictsort %}
+        <tr><td>{{ s.setup.replace('_', ' ')|title }}</td><td><span class="dir {{ s.direction }}">{{ s.direction|upper }}</span></td><td class="mono">{{ s.n }}</td>
+          <td class="mono">{{ '%.0f%%'|format(s.wins / s.n * 100) }}</td><td class="mono c-{{ D.tone(s.expectancy) }}">{{ '%+.2fR'|format(s.expectancy) }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+      <div class="note" style="padding:8px 18px 14px">Trained on {{ (stats.values()|list)[0].days }} days of H1 · <span data-localtime="{{ (stats.values()|list)[0].trained_at }}" data-fmt="datetime"></span>. Small samples are shrunk toward break-even in live confidence.</div>
+      {% else %}<div class="empty">Not calibrated yet — run <code>python scripts/train_kora.py --code {{ meta.code }}</code>.</div>{% endif %}
+    </div>
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:10px">Recent decisions · {{ meta.code }}</h3>
+      <div style="display:flex;flex-direction:column;gap:8px">
+      {% for dd in decisions %}
+      <div class="dec">
+        <a data-toggle=".dec"><span class="mono faint" style="font-size:11px;min-width:84px" data-localtime="{{ dd.created_at }}" data-fmt="datetime"></span><span class="dot bg-{{ dd.tone }}"></span>
+          <span style="font-family:var(--font-display);font-weight:600;font-size:12px">{{ dd.action }}</span><span class="chev" style="margin-left:auto">▸</span></a>
+        <div class="body">{{ dd.explanation }}</div>
+      </div>
+      {% else %}<div class="empty">No decisions yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="note" style="text-align:center">Kora is an analysis tool, not financial advice. It never places, modifies or closes trades — every decision and execution is yours.</div>
+  {% endif %}
+</div>
+{% endblock %}

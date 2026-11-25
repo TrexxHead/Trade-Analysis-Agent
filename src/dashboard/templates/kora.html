@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block content %}
+{% set st = feed.state %}
+{% set hb = feed.hb or {} %}
+<div class="screen">
+  {% if not feed.online %}
+  <div class="warn"><i data-lucide="power"></i><span>The Kora service isn't running, so these controls are queued until it starts. Run <span class="mono">python scripts/run_kora.py</span> (or <span class="mono">run_kora.bat</span>) — it analyses the watchlist on start-up, then every {{ settings.interval_minutes }} min.</span></div>
+  {% endif %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+    <div class="panel hero" style="padding:18px 20px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="dot bg-{{ {'RUNNING':'g','PAUSED':'a','STOPPED':'r'}.get(st,'m') }}" style="width:10px;height:10px;animation:kpulse 1.8s infinite"></span>
+        <span style="font-family:var(--font-display);font-weight:800;font-size:17px;letter-spacing:.05em;color:#fff">KORA · {{ st }}</span>
+        <span class="tag" style="margin-left:auto;background:rgba(255,255,255,.08);letter-spacing:.08em">Analysis only</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="agent-btns">
+        {% for k, ic, l, c in [('RUNNING','play','Run','g'),('PAUSED','pause','Pause','a'),('STOPPED','square','Stop','r')] %}
+        {% set on = control.state == k %}
+        <button data-state="{{ k }}" style="display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-weight:700;font-size:12px;padding:8px 16px;border-radius:999px;cursor:pointer;transition:all .15s var(--ease-standard);{% if on %}color:var(--ink);background:var(--{{ c }});border:1px solid var(--{{ c }}){% else %}color:var(--muted);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12){% endif %}"><i data-lucide="{{ ic }}" style="width:13px;height:13px"></i>{{ l }}</button>
+        {% endfor %}
+        <button id="run-now" class="obtn" title="Analyse every instrument now"><i data-lucide="refresh-cw"></i>Analyse now</button>
+      </div>
+      <div class="note" style="margin-top:8px;color:rgba(230,237,233,.5)">Run = analyse + alert · Pause = analyse, alerts muted · Stop = feed only</div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <div class="tile-dk"><div class="l">Uptime</div><div class="v">{{ D.duration(hb.started_at) if feed.online and hb.started_at else '—' }}</div></div>
+        <div class="tile-dk"><div class="l">Analyses today</div><div class="v">{{ n_analyses }}</div></div>
+        <div class="tile-dk"><div class="l">Last cycle</div><div class="v" style="font-size:13px">{% if last_cycle %}<span data-localtime="{{ last_cycle.at }}"></span> · {{ last_cycle.setups }} setup{{ '' if last_cycle.setups == 1 else 's' }}{% else %}—{% endif %}</div></div>
+        <div class="tile-dk"><div class="l">Next cycle</div><div class="v" style="font-size:13px">{% if feed.online and hb.next_cycle %}<span data-localtime="{{ hb.next_cycle }}"></span>{% else %}—{% endif %}</div></div>
+        {% if focus and focus.expected_move %}
+        <div class="tile-dk"><div class="l">Expected move ({{ focus.code }})</div><div class="v" style="font-size:13px;color:var(--text)">{{ focus.expected_move }}</div></div>
+        <div class="tile-dk"><div class="l">Expected RR</div><div class="v c-g" style="font-size:13px">{{ focus.expected_rr }}</div></div>
+        {% endif %}
+      </div>
+      <div class="note" style="margin-top:10px;color:rgba(230,237,233,.5)">{% if n_trained %}Calibrated on history: {{ n_trained }} setup/direction pairs.{% else %}Not yet calibrated — run <span class="mono">scripts/train_kora.py</span> so confidence reflects each setup's track record.{% endif %}</div>
+    </div>
+
+    <div class="panel" style="padding:18px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      {% set conf = (focus.candidates[0].confidence if focus and focus.candidates else (focus.confidence if focus else 0)) %}
+      <div style="position:relative;width:150px;height:150px">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <defs><linearGradient id="kcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#93c93f"></stop><stop offset="1" stop-color="#29abe2"></stop></linearGradient></defs>
+          <circle cx="75" cy="75" r="62" stroke="rgba(255,255,255,.08)" stroke-width="10" fill="none"></circle>
+          <circle cx="75" cy="75" r="62" stroke="url(#kcg)" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="{{ '%.1f'|format(389.6 * (1 - conf / 100)) }}" transform="rotate(-90 75 75)" style="transition:stroke-dashoffset .6s var(--ease-standard)"></circle>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <span class="mono" style="font-weight:600;font-size:28px;color:#fff">{{ conf }}%</span>
+          <span style="font-size:10px;letter-spacing:.1em;color:rgba(230,237,233,.5);font-family:var(--font-display);font-weight:600">{{ 'SETUP CONF.' if focus and focus.candidates else 'CONVICTION' }}</span>
+        </div>
+      </div>
+      {% if focus %}
+      <div style="margin-top:12px;font-size:12px;color:rgba(230,237,233,.65);text-align:center">{{ focus.code }} bias: <span style="color:#fff;font-weight:600">{{ focus.bias }}</span> · {{ focus.alignment }} TFs aligned</div>
+      <div style="margin-top:8px;font-size:11.5px;text-align:center;line-height:1.5" class="c-{{ focus.verdict_tone }}">{{ focus.verdict }}</div>
+      <select class="field" style="margin-top:10px;width:auto;padding:5px 10px;font-size:12px" onchange="location.href='/kora?code='+this.value">
+        {% for r in rows if r.rep %}<option value="{{ r.code }}" {{ 'selected' if r.code == code }}>{{ r.code }} — {{ r.rep.bias }} {{ r.rep.opportunity }}</option>{% endfor %}
+      </select>
+      {% else %}<div class="empty">No analysis yet.</div>{% endif %}
+    </div>
+
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:10px">Market regime{% if focus %} · {{ focus.code }}{% endif %}</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        {% for r in ['Bullish','Bearish','Range','Volatile','Trending'] %}
+        {% set on = focus and r in focus.regime.tags %}
+        <span style="font-family:var(--font-display);font-weight:600;font-size:11px;padding:5px 12px;border-radius:999px;{% if on %}color:var(--ink);background:var(--b){% else %}color:var(--muted);background:rgba(255,255,255,.05){% endif %}">{{ r }}</span>
+        {% endfor %}
+      </div>
+      <h3 class="h3" style="margin:16px 0 10px">Live signals</h3>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        {% for s in (focus.signals if focus else []) %}
+        <div style="display:flex;align-items:center;font-size:12px"><span style="color:rgba(230,237,233,.65)">{{ s.n }}</span><span class="tint {{ s.c }}" style="margin-left:auto">{{ s.s }}</span></div>
+        {% else %}<div class="empty">Signals appear after the first analysis cycle.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Instrument briefs</h3><span class="r">Click any card for Kora's full breakdown — technicals, fundamentals, entry plans</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">
+      {% for r in rows %}
+      {% set rep = r.rep %}
+      <a href="/kora/{{ r.code }}" style="display:block;background:rgba(255,255,255,.03);border:1px solid {{ 'rgba(147,201,63,.35)' if r.best and r.best.confidence >= 70 else 'rgba(253,184,19,.28)' if r.best and r.best.confidence >= 55 else 'rgba(255,255,255,.07)' }};border-radius:14px;padding:12px 14px;color:inherit;{{ 'opacity:.45' if r.disabled }}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mono" style="font-weight:600;font-size:13px;color:#fff">{{ r.code }}</span>
+          {% if rep %}<span class="tint {{ 'g' if rep.bias == 'Bullish' else 'r' if rep.bias == 'Bearish' else 'm' }}">{{ rep.bias }}</span>{% endif %}
+          <span class="mono" style="margin-left:auto;font-size:12px" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span>
+        </div>
+        {% if rep %}
+        <div style="font-size:11.5px;margin-top:7px;line-height:1.45;color:rgba(230,237,233,.7);min-height:33px">
+          {% if r.best %}<span class="grade {{ r.best.grade }}">{{ r.best.grade }}</span> {{ r.best.setup_name }} {{ r.best.direction }} · <b class="mono">{{ r.best.confidence }}%</b>{% else %}{{ rep.headline or rep.verdict|truncate(70) }}{% endif %}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;font-size:10px" class="faint"><span>{{ rep.regime.primary }}</span><span>· {{ rep.alignment }} aligned</span><span style="margin-left:auto">{{ rep.exec_tf }}</span></div>
+        {% else %}<div class="note" style="margin-top:8px">{{ 'Disabled in Settings' if r.disabled else 'Awaiting first analysis' }}</div>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(280px,1fr) minmax(0,1.5fr);align-items:start">
+    <div class="panel">
+      <h3 class="h3 lg" style="margin-bottom:12px">Reasoning chain — {{ focus.code if focus else 'current cycle' }}</h3>
+      {% for c in (focus.chain if focus else []) %}
+      <div class="chain-step">
+        <div class="rail"><span class="mk {{ 'g' if c.state == 'done' else 'a' }}">{{ '✓' if c.state == 'done' else loop.index }}</span><span class="ln"></span></div>
+        <div style="padding-bottom:6px"><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px;color:#fff">{{ c.t }}</div><div style="font-size:11.5px;color:var(--muted);margin-top:2px">{{ c.d }}</div></div>
+      </div>
+      {% else %}<div class="empty">Waiting for the first cycle.</div>{% endfor %}
+    </div>
+    <div class="panel" id="log">
+      <div class="ph"><h3 class="h3 lg">Decision log</h3><span class="r">Every decision is explainable — click to expand</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        {% for d in decisions %}
+        <div class="dec {{ 'open' if loop.first }}">
+          <a data-toggle=".dec">
+            <span class="mono faint" style="font-size:11px;min-width:84px" data-localtime="{{ d.created_at }}" data-fmt="datetime"></span>
+            <span class="dot bg-{{ d.tone }}"></span>
+            <span style="font-family:var(--font-display);font-weight:600;font-size:12.5px">{{ d.action }}</span>
+            <span class="mono c-{{ d.tone }}" style="margin-left:auto;font-size:11px">{{ ('%d%%'|format(d.confidence)) if d.confidence else '—' }}</span>
+            <span class="chev">{{ '▾' if loop.first else '▸' }}</span>
+          </a>
+          <div class="body">{{ d.explanation }}{% if d.code %} <a href="/kora/{{ d.code }}">Full breakdown →</a>{% endif %}</div>
+        </div>
+        {% else %}<div class="empty">No decisions logged yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$$('#agent-btns [data-state]').forEach((b) => b.onclick = async () => {
+    const st = b.dataset.state; const r = await K.post('/api/agent', { state: st });
+    K.setMood(st === 'RUNNING' ? 'joy' : st === 'PAUSED' ? 'neutral' : 'sad');
+    K.toast('Kora ' + st.toLowerCase() + (r.service_online ? '' : ' (applies when the service starts)'));
+    setTimeout(() => location.reload(), 900);
+  });
+  K.$('#run-now').onclick = async () => {
+    const r = await K.post('/api/agent', { run_now: true });
+    K.toast(r.service_online ? 'Analysing all instruments now…' : 'Queued — the Kora service is offline');
+    if (r.service_online) setTimeout(() => location.reload(), 6000);
+  };
+})();
+</script>
+{% endblock %}

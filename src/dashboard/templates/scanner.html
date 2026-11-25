@@ -1,37 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Scanner - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Scanner</h1>
-<p style="color:var(--text-secondary); font-size:13px; margin:-12px 0 16px;">
-  Last known signal state per watched instrument, as of the most recent
-  <code>scripts/run_scan.py</code> run. Run <code>scripts/run_scan_loop.py</code>
-  continuously to keep this current.
-</p>
-
-<div class="card">
-<table>
-  <thead><tr><th>Symbol</th><th>Timeframe</th><th>Checked</th><th>Status</th><th>Details</th></tr></thead>
-  <tbody>
-    {% for r in results %}
-    <tr>
-      <td>{{ r.symbol }}</td>
-      <td>{{ r.timeframe or '—' }}</td>
-      <td>{{ r.checked_at[:16].replace('T',' ') if r.checked_at else 'never' }}</td>
-      <td>
-        {% if not r.checked_at %}<span class="pill muted">not scanned yet</span>
-        {% elif r.error %}<span class="pill critical">error</span>
-        {% elif r.direction %}<span class="pill good">{{ r.direction }} setup</span>
-        {% else %}<span class="pill muted">no setup</span>{% endif %}
-      </td>
-      <td style="max-width:420px; font-size:12px; color:var(--text-secondary);">
-        {% if not r.checked_at %}Run <code>scripts/run_scan.py</code> to check this instrument.
-        {% elif r.error %}{{ r.error }}
-        {% elif r.rationale %}{{ r.rationale }}
-        {% else %}No trend-pullback conditions met at last check.{% endif %}
-      </td>
-    </tr>
+{% set cols = "100px 1fr 100px 80px 80px minmax(80px,1fr) minmax(80px,1fr) 1.3fr 70px" %}
+<div class="screen" style="gap:14px">
+  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+    {% for k in ['All','Synthetics','Metals','Forex'] %}<a href="/scanner?cls={{ k }}" class="fchip {{ 'on' if cls == k }}">{{ k }}</a>{% endfor %}
+    <span class="note" style="margin-left:auto">Sorted by Kora opportunity score · click a row for the full breakdown</span>
+  </div>
+  <div class="panel flush" style="overflow-x:auto">
+    <div style="min-width:900px">
+    <div class="hrow" style="grid-template-columns:{{ cols }};gap:10px;padding:11px 18px"><span>Symbol</span><span>Instrument</span><span>Price</span><span>Change</span><span>ATR (H1)</span><span title="ATR percentile vs last 100 bars">Volatility</span><span title="ADX(14) on H1">Trend strength</span><span>Kora read</span><span style="text-align:right">Score</span></div>
+    {% for r in rows %}
+    <a href="/kora/{{ r.code }}" class="drow" style="grid-template-columns:{{ cols }};gap:10px;padding:11px 18px;{{ 'opacity:.45' if r.disabled }}">
+      <span class="mono" style="font-weight:600;font-size:12.5px;color:#fff">{{ r.code }}</span>
+      <span style="font-size:11.5px;color:var(--muted)">{{ r.name }}</span>
+      <span class="mono" style="font-size:12px" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span>
+      <span class="mono c-{{ r.chg_t }}" style="font-size:11.5px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</span>
+      <span class="mono" style="font-size:11.5px;color:rgba(230,237,233,.6)">{{ D.price(r.atr, r.digits) }}</span>
+      <span style="display:flex;align-items:center"><span class="bar t5" style="flex:1"><i class="bg-a" style="width:{{ r.vol or 0 }}%"></i></span></span>
+      <span style="display:flex;align-items:center"><span class="bar t5" style="flex:1"><i class="bg-b" style="width:{{ [100, (r.trend or 0) * 2]|min }}%"></i></span></span>
+      <span style="font-size:11px;color:rgba(230,237,233,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% if r.best %}<span class="dir {{ r.best.direction }}">{{ r.best.direction|upper }}</span> {{ r.best.setup_name }}{% elif r.rep %}{{ r.rep.bias }} · {{ r.rep.regime.primary }}{% else %}—{% endif %}</span>
+      {% set s = r.score %}
+      <span class="mono" style="font-weight:600;font-size:12px;border-radius:8px;padding:4px 0;text-align:center;{% if s is none %}color:var(--faint);background:rgba(255,255,255,.04){% elif s >= 70 %}color:var(--g);background:rgba(147,201,63,.16){% elif s >= 55 %}color:var(--a);background:rgba(253,184,19,.13){% else %}color:var(--muted);background:rgba(255,255,255,.07){% endif %}">{{ s if s is not none else '—' }}</span>
+    </a>
     {% endfor %}
-  </tbody>
-</table>
+    </div>
+  </div>
+  <div class="note">Score = the best entry plan's calibrated confidence; with no plan, 45% of the bias conviction (so trending-but-unready markets still rank above flat ones). Spread and quotes stream from the Kora service.</div>
 </div>
 {% endblock %}

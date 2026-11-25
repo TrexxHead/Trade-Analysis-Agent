@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen" style="max-width:860px">
+  <div class="panel">
+    <h3 class="h3 lg" style="margin-bottom:4px">Data connections</h3>
+    <p class="note" style="margin:0 0 14px;font-size:11.5px;color:rgba(230,237,233,.5)">Where Kora gets market data. Kora is analysis-only — none of these are used to place orders.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      {% set hb = feed.hb or {} %}
+      {% for name, desc, ok, status in [
+        ('Kora service', 'Live feed + scheduled analysis (scripts/run_kora.py)', feed.online, ('Running · ' ~ (feed.source or '') ~ (' · ' ~ (feed.latency|round|int) ~ ' ms' if feed.latency else '')) if feed.online else 'Offline'),
+        ('MetaTrader 5 via MetaApi', 'Quotes, positions, account, candles · ' ~ (acct.account.server or 'Deriv MT5'), metaapi_ok, 'Configured' if metaapi_ok else 'Not configured'),
+        ('Deriv API', 'Deriv-native trade history (optional)', deriv_ok, 'Configured' if deriv_ok else 'Not configured'),
+        ('Economic calendar', 'ForexFactory weekly feed (no key needed)', true, 'Public feed'),
+        ('Claude (Anthropic)', 'Ask Kora chat + optional narratives', llm_ok, 'Configured' if llm_ok else 'Not configured')] %}
+      <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.035);border-radius:13px;padding:12px 15px">
+        <span class="dot {{ 'bg-g' if ok else 'bg-m' }}" style="width:8px;height:8px"></span>
+        <div><div style="font-family:var(--font-display);font-weight:600;font-size:13px;color:#fff">{{ name }}</div><div style="font-size:11px;color:rgba(230,237,233,.48)">{{ desc }}</div></div>
+        <span class="mono {{ 'c-g' if ok else 'muted' }}" style="margin-left:auto;font-size:11px;text-align:right">{{ status }}</span>
+      </div>
+      {% endfor %}
+      {% if hb.errors %}<div class="warn"><i data-lucide="alert-triangle"></i><span>Instrument errors: {% for k, v in hb.errors.items() %}<b class="mono">{{ k }}</b> {{ v }}{{ '; ' if not loop.last }}{% endfor %} — check the symbol names in config/instruments.yaml match your MT5 Market Watch.</span></div>{% endif %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 class="h3 lg" style="margin-bottom:12px">API keys</h3>
+    {% for k in keys %}
+    <div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.035);border-radius:13px;padding:12px 15px;margin-bottom:8px">
+      <i data-lucide="key-round" style="width:15px;height:15px;color:rgba(230,237,233,.5)"></i>
+      <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">{{ k.label }}</div><div class="note">{{ k.desc }} · <span class="mono">{{ k.env }}</span></div></div>
+      <span class="mono {{ '' if k.set else 'muted' }}" style="margin-left:auto;font-size:12.5px;letter-spacing:.05em">{{ k.masked }}</span>
+    </div>
+    {% endfor %}
+    <p class="note" style="margin:9px 0 0">Keys live only in your local <span class="mono">.env</span> and are never sent to the browser in full — the last four characters are shown so you can tell which key is loaded. Edit <span class="mono">.env</span> and restart to change them.</p>
+  </div>
+
+  <div class="panel">
+    <h3 class="h3 lg" style="margin-bottom:12px">Kora analyst</h3>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:14px">
+      <div><label class="fl">Analysis interval (minutes)</label><input class="field" type="number" min="1" max="240" id="s-interval" value="{{ settings.interval_minutes }}"></div>
+      <div><label class="fl">Alert threshold (confidence %)</label><input class="field" type="number" min="0" max="100" id="s-threshold" value="{{ settings.alert_threshold }}"></div>
+      <div><label class="fl">Your initial (topbar avatar)</label><input class="field" maxlength="1" id="s-initial" value="{{ settings.user_initial }}"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:13px;padding:14px 4px 4px">
+      <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">Kora's take (Claude narratives)</div><div class="note">A written paragraph per breakdown, regenerated when the best setup changes. Uses Anthropic API tokens.{% if not llm_ok %} Needs ANTHROPIC_API_KEY.{% endif %}</div></div>
+      <button class="switch {{ 'on' if settings.llm_narratives }}" data-setting="llm_narratives"><span></span></button>
+    </div>
+    <label class="fl" style="margin-top:16px">Instruments analysed</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px" id="s-instr">
+      {% for m in instruments %}<button class="fchip {{ '' if m.code in settings.disabled else 'on' }}" data-code="{{ m.code }}">{{ m.code }}</button>{% endfor %}
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px"><button class="btn-pri" id="s-save">Save</button></div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Notifications</h3><span class="r">{% if channels %}Delivering via {{ channels|join(' + ') }}{% else %}No channel configured{% endif %}</span></div>
+    {% for k, l, d in [('setups','Kora setups','A- and B-grade entry plans at or above your alert threshold'),('watch','Watch-list setups','Setups between 55% and your threshold'),('risk','Risk warnings','Positions without a stop-loss'),('news','High-impact news','15 minutes before red events on your currencies')] %}
+    <div style="display:flex;align-items:center;gap:13px;padding:9px 4px">
+      <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">{{ l }}</div><div class="note">{{ d }}</div></div>
+      <button class="switch {{ 'on' if settings.notify[k] }}" data-notify="{{ k }}"><span></span></button>
+    </div>
+    {% endfor %}
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+      <button class="obtn b" id="n-test">Send test alert</button>
+      {% if not channels %}<span class="note">Set <span class="mono">TELEGRAM_BOT_TOKEN</span> + <span class="mono">TELEGRAM_CHAT_ID</span> (or <span class="mono">KORA_WEBHOOK_URL</span> for Discord/Slack) in .env.</span>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$$('[data-notify]').forEach((b) => b.onclick = async () => {
+    b.classList.toggle('on'); await K.post('/api/settings', { notify: { [b.dataset.notify]: b.classList.contains('on') } }); K.toast('Notifications updated');
+  });
+  K.$$('[data-setting]').forEach((b) => b.onclick = async () => {
+    b.classList.toggle('on'); await K.post('/api/settings', { [b.dataset.setting]: b.classList.contains('on') }); K.toast('Saved');
+  });
+  K.$$('#s-instr .fchip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  K.$('#s-save').onclick = async () => {
+    const disabled = K.$$('#s-instr .fchip').filter((b) => !b.classList.contains('on')).map((b) => b.dataset.code);
+    const r = await K.post('/api/settings', { interval_minutes: K.$('#s-interval').value, alert_threshold: K.$('#s-threshold').value,
+      user_initial: (K.$('#s-initial').value || 'D').slice(0, 1).toUpperCase(), disabled });
+    K.toast(r.ok ? 'Settings saved — the Kora service picks them up next cycle' : 'Save failed');
+  };
+  K.$('#n-test').onclick = async () => { const r = await K.post('/api/notify-test'); K.toast(r.message); };
+})();
+</script>
+{% endblock %}

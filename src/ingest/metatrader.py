@@ -118,7 +118,8 @@ async def _fetch_candles_async(symbol: str, timeframe: str, count: int) -> list[
     # guarantee return order.
     candles = await account.get_historical_candles(symbol, mt_timeframe, limit=count)
     result = [
-        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"]),
+         "volume": c.get("tickVolume")}
         for c in candles
     ]
     result.sort(key=lambda c: c["time"])
@@ -163,7 +164,8 @@ async def _fetch_candle_history_async(symbol: str, timeframe: str, days: int) ->
 
     kept = [c for t, c in by_time.items() if t >= cutoff]
     result = [
-        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"]),
+         "volume": c.get("tickVolume")}
         for c in kept
     ]
     result.sort(key=lambda c: c["time"])

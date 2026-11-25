@@ -1,0 +1,31 @@
+# Kora's watchlist. `code` is the short label shown everywhere in the hub,
+# `symbol` is the exact MT5 Market Watch name on your Deriv MT5 account -
+# CONFIRM each one matches your terminal (brokers sometimes add suffixes).
+# A mismatched symbol shows up as an error on the Scanner/Kora pages rather
+# than crashing the rest of the watchlist.
+#
+# `currencies` drives fundamentals: which economic-calendar releases matter
+# for the instrument. Synthetic indices are algorithmically generated, so
+# they have none - Kora analyses them purely technically/statistically.
+instruments:
+  - {code: STEP,     symbol: "Step Index",            name: "Step Index",     kind: Synthetics, digits: 1, currencies: []}
+  - {code: V10,      symbol: "Volatility 10 Index",   name: "Volatility 10",  kind: Synthetics, digits: 3, currencies: []}
+  - {code: V25,      symbol: "Volatility 25 Index",   name: "Volatility 25",  kind: Synthetics, digits: 3, currencies: []}
+  - {code: V75,      symbol: "Volatility 75 Index",   name: "Volatility 75",  kind: Synthetics, digits: 2, currencies: []}
+  - {code: V100,     symbol: "Volatility 100 Index",  name: "Volatility 100", kind: Synthetics, digits: 2, currencies: []}
+  - {code: BOOM500,  symbol: "Boom 500 Index",        name: "Boom 500",       kind: Synthetics, digits: 3, currencies: [], spikes: up}
+  - {code: CRASH500, symbol: "Crash 500 Index",       name: "Crash 500",      kind: Synthetics, digits: 3, currencies: [], spikes: down}
+  - {code: XAUUSD,   symbol: "XAUUSD",                name: "Gold",           kind: Metals,     digits: 2, currencies: [USD], usd_proxy: EURUSD, peer: XAGUSD}
+  - {code: XAGUSD,   symbol: "XAGUSD",                name: "Silver",         kind: Metals,     digits: 3, currencies: [USD], usd_proxy: EURUSD, peer: XAUUSD}
+  - {code: EURUSD,   symbol: "EURUSD",                name: "Euro / USD",     kind: Forex,      digits: 5, currencies: [EUR, USD], peer: GBPUSD}
+  - {code: GBPUSD,   symbol: "GBPUSD",                name: "Pound / USD",    kind: Forex,      digits: 5, currencies: [GBP, USD], peer: EURUSD}
+
+# Timeframes Kora reads each cycle, and how many candles of each.
+timeframes:
+  D1: 220
+  H4: 300
+  H1: 400
+  M15: 300
+
+# The timeframe entry plans are built on (H4/D1 provide the higher-timeframe filter).
+execution_timeframe: H1

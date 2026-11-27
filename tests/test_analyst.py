@@ -112,4 +112,59 @@ def test_brief_schedule_and_text(tmp_path):
     briefing.mark_sent(conn, "07:00", at)
     assert briefing.due(conn, at) is None  # only once a day
     text = briefing.build(conn, at)
-    assert text.startswith("KORA · Morning brief") and "THE BOARD" in text and "HIGH-IMPACT NEWS" in text
+    assert text.startswith("KORA · Morning brief") and "TODAY'S FOCUS" in text and "APPROACHES FOR TODAY" in text
+
+
+def test_sizing_small_account_and_rating():
+    from src.analyst.sizing import rating, size_plan
+    boom = {"code": "BOOM1000", "entry": 15800.0, "stop": 15780.0, "rr1": 1.5, "confidence": 70,
+            "calibration": {"expectancy": 0.2}}
+    spec = {"tick_size": 0.001, "tick_value": 0.001, "volume_min": 0.2, "volume_step": 0.01}
+    tiny = size_plan(boom, spec, equity=1.51, risk_pct=1.0)
+    assert tiny["lots"] == 0.2 and tiny["tradable"] is False and "Minimum lot" in tiny["reason"]  # 0.2 lots x 20pts = $4 > equity
+    ok = size_plan(boom, spec, equity=1000, risk_pct=1.0, free_margin=900, margin_per_lot=16.0)
+    assert ok["tradable"] and ok["lots"] == 0.5 and abs(ok["risk_usd"] - 10) < 1e-9 and ok["margin"] == 8.0
+    assert size_plan(boom, None, 1000)["tradable"] is None
+    assert 7 <= rating(boom) <= 8
+
+
+def test_paper_engine_fills_and_exits(tmp_path, monkeypatch):
+    import sqlite3
+    from src.analyst import paper
+    from src.store.db import kora_connection
+    conn = kora_connection(tmp_path / "p.db")
+    paper.reset(conn, 1000)
+    cand = {"setup": "trend_pullback", "setup_name": "Trend pullback", "direction": "long", "entry_type": "limit",
+            "entry": 100.0, "stop": 99.0, "tp1": 101.5, "tp2": 103.0}
+    spec = {"contract_size": 1, "volume_min": 0.01, "volume_step": 0.01, "volume_max": 100, "tick_size": 0.01, "tick_value": 0.01}
+    assert paper.open_for_plan(conn, 1, "XAUUSD", cand, spec, 1.0) == 3
+    paper.process(conn, {"XAUUSD": {"bid": 100.4, "ask": 100.5}})        # not touched yet
+    assert all(t["status"] == "pending" for t in paper.trades(conn))
+    paper.process(conn, {"XAUUSD": {"bid": 99.9, "ask": 100.0}})         # limit fills
+    assert all(t["status"] == "open" for t in paper.trades(conn))
+    closed = paper.process(conn, {"XAUUSD": {"bid": 101.6, "ask": 101.7}})  # tp1 + quick1r win; tp2_be moves to BE
+    assert {t["policy"] for t in closed} == {"tp1", "quick1r"}
+    paper.process(conn, {"XAUUSD": {"bid": 99.95, "ask": 100.05}})       # back to entry -> breakeven
+    by = {t["policy"]: t for t in paper.trades(conn)}
+    assert by["tp1"]["status"] == "won" and abs(by["tp1"]["r"] - 1.5) < 1e-6
+    assert by["tp2_be"]["status"] == "breakeven"
+    assert paper.account(conn)["balance"] > 1000
+
+
+def test_auto_tune_switches_off_losing_setup(tmp_path, monkeypatch):
+    import sqlite3
+    from datetime import datetime, timezone
+    from src.analyst import paper, refine
+    from src.store.db import kora_connection
+    conn = kora_connection(tmp_path / "r.db")
+    paper.reset(conn, 1000)
+    now = datetime.now(timezone.utc).isoformat()
+    for i in range(12):
+        conn.execute("INSERT INTO paper_trades (code, setup, setup_name, direction, policy, status, created_at, closed_at, r, pnl) "
+                     "VALUES ('V75', 'breakout_retest', 'Breakout & retest', 'long', 'tp1', 'lost', ?, ?, -1, -10)", (now, now))
+    conn.commit()
+    monkeypatch.setattr(refine, "add_decision", lambda *a, **k: None)
+    assert refine.auto_tune(conn) == ["breakout_retest on V75"]
+    from src.analyst.config import get_settings
+    assert "breakout_retest" in get_settings(conn)["setups_off"]["V75"]
+    assert refine.auto_tune(conn) == []   # idempotent

@@ -155,10 +155,23 @@ class SimSource:
             risk = abs(pos["open_price"] - pos["stop_loss"]) * pos["volume"] * pos["mult"]
             positions.append({**{k: v for k, v in pos.items() if k != "mult"}, "current_price": cur,
                               "profit": profit, "risk_amount": risk})
+        sim_specs = {"XAUUSD": (0.01, 100, 0.01), "XAGUSD": (0.001, 5000, 0.01), "EURUSD": (0.00001, 100000, 0.01),
+                     "GBPUSD": (0.00001, 100000, 0.01), "BOOM1000": (0.001, 1, 0.2), "CRASH1000": (0.001, 1, 0.2),
+                     "BOOM500": (0.001, 1, 0.2), "CRASH500": (0.001, 1, 0.2), "V75": (0.01, 1, 0.001),
+                     "V10": (0.001, 1, 0.5), "V25": (0.001, 1, 0.5), "V100": (0.01, 1, 0.5), "STEP": (0.1, 10, 0.1)}
+        specs = {c: {"digits": next((m["digits"] for m in self.instruments if m["code"] == c), 2), "point": ts, "tick_size": ts,
+                     "tick_value": ts * cs, "volume_min": vmin, "volume_step": vmin, "contract_size": cs}
+                 for c, (ts, cs, vmin) in sim_specs.items()}
         account = {"login": "SIM-0001", "server": "Simulated", "broker": "Simulated", "currency": "USD",
                    "balance": self.balance, "equity": self.balance + upl, "margin": 1240.5,
                    "free_margin": self.balance + upl - 1240.5, "leverage": 500, "type": "SIMULATED", "name": "Simulation"}
-        return {"quotes": quotes, "account": account, "positions": positions}
+        return {"quotes": quotes, "account": account, "positions": positions, "specs": specs}
+
+    def margin_per_lot(self, symbol: str, direction: str, price: float) -> float | None:
+        code = next((m["code"] for m in self.instruments if m["symbol"] == symbol), symbol)
+        lev = 500 if code in ("XAUUSD", "XAGUSD", "EURUSD", "GBPUSD") else 1000
+        cs = {"XAUUSD": 100, "XAGUSD": 5000, "EURUSD": 100000, "GBPUSD": 100000, "STEP": 10}.get(code, 1)
+        return price * cs / lev
 
     async def candles(self, symbol: str, tf: str, count: int, end: datetime | None = None) -> list[dict]:
         code = next((m["code"] for m in self.instruments if m["symbol"] == symbol), symbol)
@@ -230,6 +243,13 @@ class MT5Source:
     async def candles(self, symbol: str, tf: str, count: int, end: datetime | None = None) -> list[dict]:
         from src.ingest import mt5_local
         return mt5_local.candles(symbol, tf, count, end)
+
+    def margin_per_lot(self, symbol: str, direction: str, price: float) -> float | None:
+        from src.ingest import mt5_local
+        try:
+            return mt5_local.margin_per_lot(symbol, direction, price)
+        except Exception:
+            return None
 
     async def close(self):
         pass

@@ -73,6 +73,7 @@ class KoraService:
             if code in self.day_open and not quote.get("day_open"):
                 quote["day_open"] = self.day_open[code]
         upsert_quotes(self.conn, q)
+        self.paper_tick(q)
         kv_set(self.conn, "account", snap["account"])
         kv_set(self.conn, "positions", snap["positions"])
         self.track_equity(snap["account"])
@@ -85,6 +86,45 @@ class KoraService:
             "errors": self.source.errors, "pid": os.getpid(), "feed_ok": True,
             "broker_connected": (snap.get("health") or {}).get("broker", True),
         })
+
+    def paper_tick(self, quotes: dict):
+        from src.analyst import paper
+        try:
+            for t in paper.process(self.conn, quotes):
+                if t["policy"] != "tp1":
+                    continue
+                row = self.conn.execute("SELECT status, r, pnl FROM paper_trades WHERE id = ?", (t["id"],)).fetchone()
+                add_decision(self.conn, f"PAPER — {t['code']} {t['direction']} {t['setup_name']} {row['status']} ({row['r']:+.2f}R)",
+                             "g" if row["status"] == "won" else "r" if row["status"] == "lost" else "b",
+                             f"Kora's paper account closed this trade at {row['pnl']:+.2f} USD. Same plan is also being "
+                             f"tested with breakeven-to-TP2 and quick-1R management - see the Lab.", code=t["code"])
+        except Exception as e:
+            print(f"paper tick failed: {e}", file=sys.stderr)
+
+    def refine(self):
+        """Self-refinement: weekly retrain, auto-tune losing setups, best management style."""
+        from src.analyst import refine
+        conn = kora_connection()  # runs in a worker thread: SQLite connections can't cross threads
+        try:
+            if refine.retrain_due(conn):
+                refine.retrain(conn, self.history_for_training)
+            refine.auto_tune(conn)
+            refine.best_policy(conn)
+        except Exception as e:
+            print(f"refine failed: {e}", file=sys.stderr)
+
+    def history_for_training(self, meta: dict, days: int) -> list[dict]:
+        from src.live.sources import fetch_candles_sync
+        if self.source.name == "mt5":
+            from src.ingest.mt5_local import candle_history
+            return candle_history(meta["symbol"], "H1", days)
+        if self.source.name == "sim":
+            from src.live.sim import gen_candles
+            return gen_candles(meta["code"], "H1", days * 24)
+        if self.source.name == "metaapi":
+            from src.ingest.metatrader import fetch_candle_history
+            return fetch_candle_history(meta["symbol"], "H1", days)
+        return fetch_candles_sync(meta, "H1", min(days * 24, 5000), "deriv")
 
     def track_equity(self, account: dict):
         eq = account.get("equity")
@@ -153,6 +193,7 @@ class KoraService:
                 fund = instrument_fundamentals(m, self.calendar, reads_by_code)
                 live = (quotes.get(code) or {}).get("price")
                 rep = analyse_instrument(m, candles.get(code, {}), exec_tf, fund, stats, live_price=live)
+                self.size_candidates(rep, m, settings)
                 if rep.get("day_open"):
                     self.day_open[code] = rep["day_open"]
                 best = rep["candidates"][0] if rep["candidates"] else None
@@ -176,6 +217,11 @@ class KoraService:
                     key = f"{code}:{best['setup']}:{best['direction']}:{round(best['entry'] / (rep['atr'] or 1))}"
                     if record_plan(self.conn, key, code, best, rep["digits"], aid):
                         print(f"{code}: logged {best['grade']}-grade plan for forward tracking")
+                        from src.analyst import paper
+                        from src.store.db import list_plans
+                        pid = (list_plans(self.conn, code, 1) or [{}])[0].get("id")
+                        spec = (kv_get(self.conn, "symbol_specs", {}) or {}).get(code)
+                        paper.open_for_plan(self.conn, pid, code, best, spec, settings.get("risk_pct", 1.0))
                 if state == "RUNNING" and best:
                     self.maybe_alert(rep, best, settings)
                 self.source.errors.pop(code, None)
@@ -198,6 +244,22 @@ class KoraService:
                                          "instruments": len(reports), "setups": n_setups, "errors": errors})
         self.last_cycle = now()
         prune_analyses(self.conn)
+
+    def size_candidates(self, rep: dict, meta: dict, settings: dict):
+        """Attach lots / $ risk / margin / tradability and a 0-10 rating to every plan."""
+        from src.analyst.sizing import rating, size_plan
+        acct = kv_get(self.conn, "account", {}) or {}
+        spec = (kv_get(self.conn, "symbol_specs", {}) or {}).get(rep["code"])
+        for c in rep["candidates"]:
+            mpl = None
+            if hasattr(self.source, "margin_per_lot"):
+                try:
+                    mpl = self.source.margin_per_lot(meta["symbol"], c["direction"], c["entry"])
+                except Exception:
+                    mpl = None
+            c["sizing"] = size_plan(c, spec, acct.get("equity"), settings.get("risk_pct", 1.0),
+                                    acct.get("free_margin"), mpl, settings.get("max_risk_pct", 3.0))
+            c["rating"] = rating(c)
 
     def maybe_alert(self, rep: dict, best: dict, settings: dict):
         thr = settings["alert_threshold"]
@@ -391,6 +453,8 @@ class KoraService:
                         self.sync_history(days=7)
                     if tick % 900 == 0:  # ~every 30 min
                         await self.snapshot_trades()
+                    if tick % 10800 == 300 or kv_get(self.conn, "retrain_now"):  # ~every 6h (first ~10 min after start)
+                        await asyncio.to_thread(self.refine)
                 except Exception:
                     traceback.print_exc()
                 tick += 1

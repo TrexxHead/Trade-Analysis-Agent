@@ -41,6 +41,8 @@
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:14px">
       <div><label class="fl">Analysis interval (minutes)</label><input class="field" type="number" min="1" max="240" id="s-interval" value="{{ settings.interval_minutes }}"></div>
       <div><label class="fl">Alert threshold (confidence %)</label><input class="field" type="number" min="0" max="100" id="s-threshold" value="{{ settings.alert_threshold }}"></div>
+      <div><label class="fl">Risk per trade (% of equity)</label><input class="field" type="number" min="0.1" max="10" step="0.1" id="s-risk" value="{{ settings.risk_pct }}"></div>
+      <div><label class="fl">Max risk if min lot forces more (%)</label><input class="field" type="number" min="0.1" max="20" step="0.1" id="s-maxrisk" value="{{ settings.max_risk_pct }}"></div>
       <div><label class="fl">Your initial (topbar avatar)</label><input class="field" maxlength="1" id="s-initial" value="{{ settings.user_initial }}"></div>
     </div>
     <div style="display:flex;align-items:center;gap:13px;padding:14px 4px 4px">
@@ -157,6 +159,7 @@
   };
   K.$('#s-save').onclick = async () => {
     const r = await K.post('/api/settings', { interval_minutes: K.$('#s-interval').value, alert_threshold: K.$('#s-threshold').value,
+      risk_pct: K.$('#s-risk').value, max_risk_pct: K.$('#s-maxrisk').value,
       user_initial: (K.$('#s-initial').value || 'D').slice(0, 1).toUpperCase() });
     K.toast(r.ok ? 'Settings saved — the Kora service picks them up next cycle' : 'Save failed');
   };

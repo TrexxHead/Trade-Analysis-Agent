@@ -114,6 +114,14 @@ def symbol_spec(symbol: str) -> dict | None:
             "contract_size": getattr(i, "trade_contract_size", None), "spread_points": getattr(i, "spread", None)}
 
 
+def margin_per_lot(symbol: str, direction: str, price: float) -> float | None:
+    """Margin the broker would require for 1.0 lot (MT5's read-only calculator)."""
+    mt5 = connect()
+    kind = mt5.ORDER_TYPE_BUY if direction in ("long", "buy") else mt5.ORDER_TYPE_SELL
+    m = mt5.order_calc_margin(kind, symbol, 1.0, price)
+    return float(m) if m is not None else None
+
+
 def day_open(symbol: str) -> float | None:
     mt5 = connect()
     r = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 1)

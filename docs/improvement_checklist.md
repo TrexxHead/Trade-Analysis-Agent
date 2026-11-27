@@ -115,3 +115,13 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [ ] **P2** Tests for the dashboard routes and APIs (Flask test client)
 - [ ] **P2** GitHub Actions CI running `pytest` on every push
 - [ ] **P3** Split `app.py` into blueprints per screen
+
+## Agentic Kora & equity-aware brief (2026-11-27)
+- [x] Brief prioritises today's focus instruments (session-aware), rates every entry /10, sizes lots from live equity and broker specs, and flags when the minimum lot risks too much
+- [x] "Taking several at once?" — correlation check, Boom/Crash note, total heat cap (6%), room per instrument
+- [x] Approaches for the day: Conservative / Balanced / Active / Stand aside
+- [x] Kora's paper account: every A/B plan paper-traded on live bid/ask under three management styles (no real orders, ever)
+- [x] Self-refinement: weekly retrain, auto-tune off losing setups (logged, reversible), best-management insight in the brief
+- [x] Lab page: paper equity, style comparison, backtest vs forward vs paper vs your trades, refinement log, controls
+- [x] Risk % / max risk % in Settings
+- [ ] Opt-in real Deriv **demo** execution via a second MT5 terminal (demo-only gate) — needs a demo login

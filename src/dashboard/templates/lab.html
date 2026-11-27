@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro rcell(v) %}{% if v %}<span class="c-{{ D.tone(v[0]) if v[0] is not none else 'w' }}" style="font-weight:600">{{ '%+.2fR'|format(v[0]) if v[0] is not none else '$ only' }}</span> <span class="faint">· {{ v[1] }}</span>{% else %}<span class="faint">—</span>{% endif %}{% endmacro %}
+<div class="screen">
+  <div class="info"><i data-lucide="flask-conical"></i><span>Kora's Lab: Kora paper-trades every A/B plan on live prices under three management styles, retrains itself weekly, and switches off setups that keep losing. Nothing here touches your MT5 account.</span></div>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+    <div class="stat"><div class="lbl-up">Paper balance</div><div class="v">{{ D.money(pacct.balance) }}</div><div class="s">Started {{ D.money(pacct.start) }}</div></div>
+    <div class="stat"><div class="lbl-up">Return</div><div class="v c-{{ D.tone(stats.ret) }}">{{ D.pct(stats.ret, 1, True) if stats.ret is not none else '—' }}</div><div class="s">since <span data-localtime="{{ pacct.since }}" data-fmt="datetime"></span></div></div>
+    <div class="stat"><div class="lbl-up">Closed trades</div><div class="v">{{ stats.n }}</div><div class="s">{{ stats.cancelled }} limits never filled</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v">{{ D.pct(stats.win_rate, 0) if stats.win_rate is not none else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Expectancy</div><div class="v c-{{ D.tone(stats.expectancy) }}">{{ '%+.2fR'|format(stats.expectancy) if stats.expectancy is not none else '—' }}</div><div class="s">per trade</div></div>
+    <div class="stat"><div class="lbl-up">Live now</div><div class="v">{{ stats.open }}</div><div class="s">{{ stats.pending }} pending entries</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);align-items:start">
+    <div class="panel">
+      <div class="ph"><h3 class="h3 lg">Paper equity</h3><span class="r">Baseline policy (exit at TP1)</span></div>
+      {% if curve.line %}
+      <svg viewBox="0 0 600 190" preserveAspectRatio="none" style="width:100%;height:210px;display:block">
+        <defs><linearGradient id="klab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(155,211,90,.25)"></stop><stop offset="1" stop-color="rgba(155,211,90,0)"></stop></linearGradient></defs>
+        <path d="{{ curve.area }}" fill="url(#klab)"></path><path d="{{ curve.line }}" fill="none" stroke="#9bd35a" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      {% else %}<div class="empty" style="height:210px;display:flex;align-items:center;justify-content:center">The curve starts once Kora's first paper trade closes. Every A/B plan opens paper trades automatically.</div>{% endif %}
+    </div>
+    <div class="panel">
+      <h3 class="h3 lg" style="margin-bottom:12px">Controls</h3>
+      <label class="fl" for="lab-start" style="margin-top:0">Paper starting balance ($)</label>
+      <div style="display:flex;gap:8px"><input class="field" id="lab-start" type="number" min="10" value="{{ pacct.start|round|int }}"><button class="obtn r" id="lab-reset">Reset</button></div>
+      <div class="note" style="margin-top:6px">Sized at your risk % from Settings, using the broker's real lot sizes. Reset clears paper history.</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+        <div><div style="font-weight:600;font-size:13.5px">Auto-tune</div><div class="note">Switch off setups losing ≤ −0.25R over 12+ paper trades</div></div>
+        <button class="switch {{ 'on' if settings.auto_tune }}" id="lab-auto" style="margin-left:auto" aria-label="Auto-tune"><span></span></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+        <div><div style="font-weight:600;font-size:13.5px">Retrain on fresh history</div><div class="note">Last: {% if trained_at %}<span data-localtime="{{ trained_at }}" data-fmt="datetime"></span>{% else %}not yet{% endif %} · runs weekly</div></div>
+        <button class="obtn b" id="lab-retrain" style="margin-left:auto">Retrain now</button>
+      </div>
+      {% if best %}<div class="info" style="margin-top:16px"><i data-lucide="lightbulb"></i><span>Best management so far: <b>{{ best.name }}</b> ({{ '%+.2fR'|format(best.expectancy) }} over {{ best.n }} trades).</span></div>{% endif %}
+    </div>
+  </div>
+
+  <div class="panel flush">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">Management styles, head to head</h3><div class="note">The same plans, managed three ways</div></div>
+    <table class="tbl"><thead><tr><th>Style</th><th>Trades</th><th>Win rate</th><th>Expectancy</th><th>Total R</th><th style="text-align:right">Paper P/L</th></tr></thead><tbody>
+    {% for p in policies %}<tr><td style="font-weight:600;color:#fff">{{ p.name }}{% if best and best.policy == p.policy %} <span class="tint g">best</span>{% endif %}</td><td>{{ p.n }}</td>
+      <td>{{ D.pct(p.win_rate, 0) if p.win_rate is not none else '—' }}</td><td class="c-{{ D.tone(p.expectancy) if p.expectancy is not none else 'w' }}">{{ '%+.2fR'|format(p.expectancy) if p.expectancy is not none else '—' }}</td>
+      <td>{{ '%+.1fR'|format(p.total_r) }}</td><td style="text-align:right" class="c-{{ D.tone(p.pnl) }}">{{ D.smoney(p.pnl) }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="panel flush" style="overflow-x:auto">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">How successful can you be?</h3><div class="note">Expectancy per trade (and sample size) for each setup on your instruments, from four sources. Your own trades count once you tag them with the setup in the Journal.</div></div>
+    {% if edge %}
+    <table class="tbl"><thead><tr><th>Instrument</th><th>Setup</th><th>Backtest</th><th>Kora forward</th><th>Kora paper</th><th>Your trades</th><th>Status</th></tr></thead><tbody>
+    {% for e in edge %}<tr><td style="font-weight:600;color:#fff">{{ e.code }}</td><td>{{ e.setup }}</td><td>{{ rcell(e.bt) }}</td><td>{{ rcell(e.fwd) }}</td><td>{{ rcell(e.paper) }}</td><td>{{ rcell(e.mine) }}</td>
+      <td>{% if e.sid in (settings.setups_off.get(e.code) or []) %}<span class="tint a">off{% if auto_off.get(e.code ~ ':' ~ e.sid) %} (auto){% endif %}</span>{% else %}<span class="tint g">on</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<div class="empty">Run <code>python scripts/train_kora.py</code> (or press Retrain now) to fill the backtest column. The other columns fill as Kora trades on paper and you tag your trades.</div>{% endif %}
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:start">
+    <div class="panel flush" style="overflow-x:auto">
+      <div style="padding:18px 22px 6px"><h3 class="h3 lg">Paper trades</h3></div>
+      <table class="tbl"><thead><tr><th>Opened</th><th>Instrument</th><th>Plan</th><th>Style</th><th>Lots</th><th style="text-align:right">Result</th></tr></thead><tbody>
+      {% for t in open_trades + closed %}<tr><td class="faint" data-localtime="{{ t.opened_at or t.created_at }}" data-fmt="datetime"></td><td style="font-weight:600;color:#fff">{{ t.code }}</td>
+        <td><span class="dir {{ t.direction }}">{{ t.direction|upper }}</span> <span class="muted">{{ t.setup_name }}</span></td><td class="muted">{{ policy_names[t.policy] }}</td><td>{{ t.lots if t.lots is not none else '—' }}</td>
+        <td style="text-align:right">{% if t.status == 'open' %}<span class="tint b">Open</span>{% elif t.status == 'pending' %}<span class="tint m">Waiting to fill</span>{% elif t.status == 'cancelled' %}<span class="tint m">Not filled</span>
+          {% else %}<span class="tint {{ 'g' if (t.r or 0) > 0 else 'r' if (t.r or 0) < 0 else 'm' }}">{{ t.status|title }} {{ '%+.2fR'|format(t.r) }} · {{ D.smoney(t.pnl) }}</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="6"><div class="empty">No paper trades yet. They open automatically with Kora's next A/B plan.</div></td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+    <div class="panel">
+      <h3 class="h3 lg" style="margin-bottom:10px">Refinement log</h3>
+      <div style="display:flex;flex-direction:column;gap:8px">
+      {% for d in log %}<div class="dec"><a data-toggle=".dec"><span class="faint" style="font-size:12px;min-width:84px" data-localtime="{{ d.created_at }}" data-fmt="datetime"></span><span class="dot bg-{{ d.tone }}"></span><span style="font-weight:500;font-size:13px">{{ d.action }}</span><span class="chev" style="margin-left:auto">▸</span></a><div class="body">{{ d.explanation }}</div></div>
+      {% else %}<div class="empty">Kora logs every retrain, auto-tune and insight here.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$('#lab-reset').onclick = async () => { const r = await K.post('/api/lab', { action: 'reset', start: K.$('#lab-start').value }); K.toast(r.message); setTimeout(() => location.reload(), 800); };
+  K.$('#lab-retrain').onclick = async () => { const r = await K.post('/api/lab', { action: 'retrain' }); K.toast(r.message); };
+  K.$('#lab-auto').onclick = async (e) => { const b = e.currentTarget; b.classList.toggle('on'); await K.post('/api/settings', { auto_tune: b.classList.contains('on') }); K.toast('Auto-tune ' + (b.classList.contains('on') ? 'on' : 'off')); };
+})();
+</script>
+{% endblock %}

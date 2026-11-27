@@ -22,7 +22,10 @@ DEFAULT_SETTINGS = {
     "llm_narratives": False,      # write a "Kora's take" paragraph per breakdown via Claude (costs API tokens)
     "watchlist": None,            # list of codes; None = config default_watchlist
     "custom_instruments": [],     # user-added instruments (same fields as the catalog)
-    "setups_off": {},             # {code: [setup ids Kora should not look for on that instrument]}
+    "setups_off": {},
+    "risk_pct": 1.0,              # % of equity to risk per trade when Kora sizes a plan
+    "max_risk_pct": 3.0,
+    "auto_tune": True,            # let Kora switch off setups that keep losing in paper trading          # a plan whose minimum lot risks more than this is marked not tradable             # {code: [setup ids Kora should not look for on that instrument]}
     "user_initial": "D",
     "pnl_mode": "usd",
 }

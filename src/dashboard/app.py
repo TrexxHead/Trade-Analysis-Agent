@@ -30,6 +30,7 @@ from src.analyst.fundamentals import sessions
 from src.analysis.metrics import breakdown_by_hour, breakdown_by_weekday, compute_period_stats
 from src.dashboard import data as D
 from src.store.db import (
+    add_decision,
     analyses_between, get_flags, get_quotes, get_setup_stats, get_trade, get_trade_charts, get_trades, kora_connection,
     kv_get, kv_set, latest_analyses, list_decisions, list_plans, upsert_annotation,
 )
@@ -62,6 +63,7 @@ PAGES = {
     "dashboard": ("Dashboard", "Portfolio overview — live", "/", "layout-dashboard"),
     "charts": ("Charts", "Multi-timeframe workspace", "/charts", "candlestick-chart"),
     "kora": ("Kora", "Market analyst · setups & reasoning · never trades", "/kora", "bot"),
+    "lab": ("Lab", "Kora's paper trading & self-refinement", "/lab", "flask-conical"),
     "positions": ("Positions", "Open trades & history", "/positions", "layers"),
     "risk": ("Risk", "Exposure, limits & stress", "/risk", "shield"),
     "analytics": ("Analytics", "Quant performance review", "/analytics", "bar-chart-3"),
@@ -225,6 +227,83 @@ def kora_report(code):
     return render_template("kora_report.html", active="kora", sub="report", rep=rep, meta=meta,
                            stats=stats, decisions=decs, llm_ok=llm.available(),
                            plans=list_plans(conn, code, 20), pstats=D.plan_stats(list_plans(conn, code, 10000)))
+
+
+@app.route("/lab")
+def lab():
+    from src.analyst import paper
+    from src.analyst.config import watchlist_codes
+    from src.analyst.setups import SETUP_NAMES
+    conn = _conn()
+    acct = paper.account(conn)
+    allp = paper.trades(conn, limit=100000)
+    base = [t for t in allp if t["policy"] == "tp1"]
+    done = sorted([t for t in base if t["status"] in ("won", "lost", "breakeven", "expired")], key=lambda t: t["closed_at"])
+    curve, bal = [acct["start"]], acct["start"]
+    for t in done:
+        bal += t["pnl"] or 0
+        curve.append(bal)
+    rs = [t["r"] for t in done if t["r"] is not None]
+    stats = {"n": len(done), "win_rate": sum(1 for r in rs if r > 0) / len(rs) * 100 if rs else None,
+             "expectancy": sum(rs) / len(rs) if rs else None, "ret": (acct["balance"] / acct["start"] - 1) * 100 if acct["start"] else None,
+             "open": sum(1 for t in base if t["status"] == "open"), "pending": sum(1 for t in base if t["status"] == "pending"),
+             "cancelled": sum(1 for t in base if t["status"] == "cancelled")}
+    # backtest vs Kora forward vs paper vs you, per instrument + setup
+    bt: dict = {}
+    for (code, setup, _d), r in get_setup_stats(conn).items():
+        e = bt.setdefault((code, setup), [0, 0.0])
+        e[0] += r["n"]
+        e[1] += r["expectancy"] * r["n"]
+    fwd: dict = {}
+    for p in list_plans(conn, limit=100000):
+        if p["status"] in ("won", "lost", "expired") and p["result_r"] is not None:
+            fwd.setdefault((p["code"], p["setup"]), []).append(p["result_r"])
+    pap: dict = {}
+    for t in done:
+        pap.setdefault((t["code"], t["setup"]), []).append(t["r"] or 0)
+    name_to_id = {v.lower(): k for k, v in SETUP_NAMES.items()}
+    s2c = D.symbol_to_code()
+    mine: dict = {}
+    for t in get_trades(conn):
+        sid = name_to_id.get((t.get("setup") or "").lower())
+        if sid and s2c.get(t["symbol"]):
+            mine.setdefault((s2c[t["symbol"]], sid), []).append(t["pnl"] / t["risk_amount"] if t.get("risk_amount") else None)
+    edge = []
+    for code in watchlist_codes(get_settings(conn)):
+        for sid, sname in SETUP_NAMES.items():
+            k = (code, sid)
+            if not any(k in m for m in (bt, fwd, pap, mine)):
+                continue
+            my = mine.get(k, [])
+            my_r = [x for x in my if x is not None]
+            edge.append({"code": code, "setup": sname, "sid": sid,
+                         "bt": (bt[k][1] / bt[k][0], bt[k][0]) if k in bt and bt[k][0] else None,
+                         "fwd": (sum(fwd[k]) / len(fwd[k]), len(fwd[k])) if k in fwd else None,
+                         "paper": (sum(pap[k]) / len(pap[k]), len(pap[k])) if k in pap else None,
+                         "mine": (sum(my_r) / len(my_r) if my_r else None, len(my)) if my else None})
+    log = [d for d in list_decisions(conn, 300) if d["action"].split(" ")[0] in ("RETRAIN", "AUTO-TUNE", "INSIGHT", "PAPER", "TRAIN")][:25]
+    return render_template("lab.html", active="lab", pacct=acct, stats=stats, curve=D.svg_path(curve),
+                           open_trades=[t for t in allp if t["status"] in ("open", "pending")][:60],
+                           closed=[t for t in allp if t["status"] not in ("open", "pending")][:60],
+                           policies=paper.policy_stats(conn), edge=edge, log=log,
+                           best=kv_get(conn, "best_policy"), auto_off=kv_get(conn, "auto_disabled", {}) or {},
+                           trained_at=kv_get(conn, "trained_at"), policy_names=paper.POLICIES)
+
+
+@app.route("/api/lab", methods=["POST"])
+def api_lab():
+    from src.analyst import paper
+    conn = _conn()
+    body = request.get_json(force=True) or {}
+    if body.get("action") == "reset":
+        start = max(10.0, min(10_000_000.0, float(body.get("start") or 1000)))
+        paper.reset(conn, start)
+        add_decision(conn, f"PAPER — account reset to ${start:,.2f}", "b", "Operator reset Kora's paper account from the Lab.")
+        return jsonify({"ok": True, "message": f"Paper account reset to ${start:,.2f}"})
+    if body.get("action") == "retrain":
+        kv_set(conn, "retrain_now", True)
+        return jsonify({"ok": True, "message": "Retraining queued - the Kora service picks it up within a minute."})
+    return jsonify({"ok": False, "message": "Unknown action"}), 400
 
 
 @app.route("/positions")
@@ -710,6 +789,10 @@ def api_settings():
                             "weekdays_only": bool(v.get("weekdays_only"))}
         elif k == "notify" and isinstance(v, dict):
             cur.setdefault("notify", {}).update({kk: bool(vv) for kk, vv in v.items()})
+        elif k == "auto_tune":
+            cur[k] = bool(v)
+        elif k in ("risk_pct", "max_risk_pct"):
+            cur[k] = max(0.05, min(20.0, float(v)))
         elif k in ("interval_minutes", "alert_threshold"):
             cur[k] = max(1 if k == "interval_minutes" else 0, min(240 if k == "interval_minutes" else 100, int(v)))
         elif k == "setups_off" and isinstance(v, dict):

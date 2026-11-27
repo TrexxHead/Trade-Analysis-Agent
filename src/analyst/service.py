@@ -168,7 +168,7 @@ class KoraService:
                 traceback.print_exc()
 
         self.update_correlations(candles)
-        self.resolve_plans(candles)
+        await self.resolve_plans(candles)
         kv_set(self.conn, "sparklines", {c: [round(x["close"], 6) for x in (tfs.get("H1") or [])[-48:]]
                                          for c, tfs in candles.items()})
         secs = (now() - t0).total_seconds()
@@ -193,10 +193,18 @@ class KoraService:
             notify.notify_once(self.conn, key, f"KORA · watch · {rep['code']} {best['direction']} "
                                                f"({best['setup_name']}, {best['confidence']}%) — {best['levels_text']}")
 
-    def resolve_plans(self, candles):
-        """Forward-test every open Kora plan against the H1 candles printed since."""
+    async def resolve_plans(self, candles):
+        """Forward-test every open Kora plan against the H1 candles printed since
+        (fetching history for instruments that have left the watchlist)."""
+        from src.analyst.config import by_code
+        cat = by_code()
         for p in open_plans(self.conn):
             h1 = (candles.get(p["code"]) or {}).get("H1")
+            if not h1 and p["code"] in cat:
+                try:
+                    h1 = await self.source.candles(cat[p["code"]]["symbol"], "H1", 120)
+                except Exception:
+                    h1 = None
             if not h1:
                 continue
             res = resolve_plan(h1, p["created_at"], p)

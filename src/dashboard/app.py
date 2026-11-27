@@ -115,7 +115,7 @@ def dashboard():
         curve_label = f"Cumulative P&L · {len(trades)} trades"
     else:
         curve, curve_label = [], ""
-    reps = latest_analyses(conn)
+    reps = D.watched_analyses(conn)
     top = max(reps.values(), key=lambda r: r.get("opportunity") or 0, default=None)
     positions = D.enrich_positions(conn, acct["positions"], acct["equity"])
     risk = D.risk_model(conn, acct, positions)
@@ -142,8 +142,8 @@ def charts():
 @app.route("/kora")
 def kora():
     conn = _conn()
-    reps = latest_analyses(conn)
-    rows = D.instrument_rows(conn)
+    reps = D.watched_analyses(conn)
+    rows = [r for r in D.instrument_rows(conn) if r["watched"]]
     code = (request.args.get("code") or "").upper()
     if code not in reps:
         code = max(reps, key=lambda c: reps[c].get("opportunity") or 0) if reps else None
@@ -574,7 +574,7 @@ def _chat_context(conn) -> dict:
     q = D.quant_stats(trades, acct["balance"])
     pos = D.enrich_positions(conn, acct["positions"], acct["equity"])
     rm = D.risk_model(conn, acct, pos)
-    reps = latest_analyses(conn)
+    reps = D.watched_analyses(conn)
     flags = get_flags(conn)
     fc: dict[str, int] = defaultdict(int)
     for f in flags:

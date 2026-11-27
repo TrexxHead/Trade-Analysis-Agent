@@ -381,6 +381,15 @@ def svg_path(values: list[float], w=600, h=180, pad=8) -> dict:
     return {"line": line, "area": f"{line} L{w} {h + 10} L0 {h + 10} Z", "hi": hi, "lo": lo}
 
 
+def watched_analyses(conn) -> dict:
+    """Latest analysis per instrument, limited to the current watchlist (an
+    instrument you removed keeps its old analysis in the DB, but shouldn't
+    appear on the board)."""
+    from src.analyst.config import watchlist_codes
+    wl = set(watchlist_codes(get_settings(conn)))
+    return {c: r for c, r in latest_analyses(conn).items() if c in wl}
+
+
 def plan_stats(plans: list[dict]) -> dict:
     done = [p for p in plans if p["status"] in ("won", "lost", "expired")]
     rs = [p["result_r"] for p in done if p["result_r"] is not None]

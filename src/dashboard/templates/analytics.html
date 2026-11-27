@@ -46,12 +46,12 @@
       {% set wr = q.win_rate / 100 %}
       <div style="position:relative;width:130px;height:130px">
         <svg width="130" height="130" viewBox="0 0 130 130">
-          <circle cx="65" cy="65" r="54" stroke="rgba(224,101,95,.45)" stroke-width="12" fill="none"></circle>
-          <circle cx="65" cy="65" r="54" stroke="#93c93f" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="{{ '%.1f %.1f'|format(339.3 * wr, 339.3 * (1 - wr)) }}" transform="rotate(-90 65 65)"></circle>
+          <circle cx="65" cy="65" r="54" stroke="rgba(255,107,97,.45)" stroke-width="12" fill="none"></circle>
+          <circle cx="65" cy="65" r="54" stroke="#9bd35a" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="{{ '%.1f %.1f'|format(339.3 * wr, 339.3 * (1 - wr)) }}" transform="rotate(-90 65 65)"></circle>
         </svg>
         <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
           <span class="mono" style="font-weight:600;font-size:24px;color:#fff">{{ '%.0f'|format(q.win_rate) }}%</span>
-          <span style="font-size:9.5px;letter-spacing:.1em;color:rgba(230,237,233,.5);font-family:var(--font-display);font-weight:600">WIN RATE</span>
+          <span style="font-size:9.5px;letter-spacing:.1em;color:rgba(235,235,245,.5);font-family:var(--font-display);font-weight:600">Win Rate</span>
         </div>
       </div>
       <div style="display:flex;gap:14px;margin-top:12px;font-size:11px;color:var(--muted)"><span><span class="c-g">●</span> {{ q.wins }} wins</span><span><span class="c-r">●</span> {{ q.losses }} losses</span></div>
@@ -62,7 +62,7 @@
       <div style="display:flex;gap:6px;align-items:flex-end;height:130px">
         {% for b in hist.bins %}
         <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end" title="{{ b.n }} trades">
-          <div style="width:100%;border-radius:5px 5px 2px 2px;opacity:.85;background:{{ {'g':'var(--g)','r':'var(--r)','m':'rgba(230,237,233,.55)'}[b.t] }};height:{{ b.n / hmax * 104 }}px"></div>
+          <div style="width:100%;border-radius:5px 5px 2px 2px;opacity:.85;background:{{ {'g':'var(--g)','r':'var(--r)','m':'rgba(235,235,245,.55)'}[b.t] }};height:{{ b.n / hmax * 104 }}px"></div>
           <span class="mono" style="font-size:8.5px;color:var(--faint)">{{ b.l }}</span>
         </div>
         {% endfor %}

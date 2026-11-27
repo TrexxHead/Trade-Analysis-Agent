@@ -333,7 +333,7 @@ def risk_model(conn, acct: dict, positions: list[dict]) -> dict:
         0.15 * (1.0 if uncapped else 0.0),
     ]
     score = round(sum(parts) * 100)
-    label = "LOW" if score < 35 else "MODERATE" if score < 65 else "HIGH"
+    label = "Low" if score < 35 else "Moderate" if score < 65 else "High"
     return {"total_risk": total_risk, "heat": heat, "heat_adj": adj, "uncapped": uncapped, "expo": expo,
             "loss_limit": loss_limit, "loss_used": loss_used, "dd_buffer": dd_buffer, "dd_used": dd_used,
             "score": score, "label": label, "label_tone": "g" if score < 35 else "a" if score < 65 else "r",
@@ -377,3 +377,21 @@ def svg_path(values: list[float], w=600, h=180, pad=8) -> dict:
     pts = [f"{'L' if i else 'M'}{i * sx:.1f} {h - pad - (v - lo) * sy + 5:.1f}" for i, v in enumerate(values)]
     line = " ".join(pts)
     return {"line": line, "area": f"{line} L{w} {h + 10} L0 {h + 10} Z", "hi": hi, "lo": lo}
+
+
+def plan_stats(plans: list[dict]) -> dict:
+    done = [p for p in plans if p["status"] in ("won", "lost", "expired")]
+    rs = [p["result_r"] for p in done if p["result_r"] is not None]
+    wins = sum(1 for p in done if p["status"] == "won" or (p["status"] == "expired" and (p["result_r"] or 0) > 0))
+    return {"total": len(plans), "open": sum(1 for p in plans if p["status"] == "open"),
+            "resolved": len(done), "not_filled": sum(1 for p in plans if p["status"] == "not_filled"),
+            "wins": wins, "win_rate": wins / len(done) * 100 if done else None,
+            "avg_r": sum(rs) / len(rs) if rs else None, "total_r": sum(rs) if rs else 0.0}
+
+
+def spark_path(values: list[float], w: int = 120, h: int = 28) -> str:
+    if not values or len(values) < 2:
+        return ""
+    lo, hi = min(values), max(values)
+    sx, sy = w / (len(values) - 1), (h - 4) / ((hi - lo) or 1)
+    return " ".join(f"{'L' if i else 'M'}{i * sx:.1f} {h - 2 - (v - lo) * sy:.1f}" for i, v in enumerate(values))

@@ -22,7 +22,7 @@
         {% for k in cs %}{% if oi.o < 0 and k.time >= j.open_time[:19] %}{% set oi.o = loop.index0 %}{% endif %}{% if k.time <= j.close_time[:19] or k.time[:13] <= j.close_time[:13] %}{% set oi.c = loop.index0 %}{% endif %}{% endfor %}
         <svg data-candles='{{ cs|tojson }}' data-open-idx="{{ oi.o }}" data-close-idx="{{ oi.c }}" style="width:100%;height:74px;border-radius:11px;background:var(--bg-sunk);display:block"></svg>
       {% else %}
-      <div style="height:74px;border-radius:11px;background:repeating-linear-gradient(115deg,rgba(255,255,255,.03),rgba(255,255,255,.03) 8px,rgba(255,255,255,.055) 8px,rgba(255,255,255,.055) 16px);border:1px dashed rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(230,237,233,.4)">Chart snapshot pending — the Kora service captures it after close</div>
+      <div style="height:74px;border-radius:11px;background:repeating-linear-gradient(115deg,rgba(255,255,255,.03),rgba(255,255,255,.03) 8px,rgba(255,255,255,.055) 8px,rgba(255,255,255,.055) 16px);border:1px dashed rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(235,235,245,.4)">Chart snapshot pending — the Kora service captures it after close</div>
       {% endif %}
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <span class="tag">{{ j.setup or 'Untagged setup' }}</span>
@@ -31,8 +31,8 @@
         <span class="tag">{{ D.smoney(j.pnl) }}</span>
         <span class="tint {{ 'a' if j.flags or not j.reviewed else 'g' }}" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:10px;border-radius:999px;padding:3px 10px">{{ 'Flagged' if j.flags else 'Reviewed' if j.reviewed else 'Needs review' }}</span>
       </div>
-      {% if j.kora_note %}<div style="font-size:12px;line-height:1.55;color:rgba(230,237,233,.68)"><span class="c-b" style="font-weight:600">Kora: </span>{{ j.kora_note }}</div>{% endif %}
-      <div style="font-size:11.5px;line-height:1.5;color:rgba(230,237,233,.5);border-top:1px solid rgba(255,255,255,.06);padding-top:8px"><span class="c-g" style="font-weight:600">Lesson — </span>{{ j.notes or 'Not reviewed yet. Open the trade to add your notes and lesson.' }}</div>
+      {% if j.kora_note %}<div style="font-size:12px;line-height:1.55;color:rgba(235,235,245,.68)"><span class="c-b" style="font-weight:600">Kora: </span>{{ j.kora_note }}</div>{% endif %}
+      <div style="font-size:11.5px;line-height:1.5;color:rgba(235,235,245,.5);border-top:1px solid rgba(255,255,255,.06);padding-top:8px"><span class="c-g" style="font-weight:600">Lesson — </span>{{ j.notes or 'Not reviewed yet. Open the trade to add your notes and lesson.' }}</div>
     </a>
     {% else %}
     <div class="panel" style="grid-column:1/-1"><div class="empty">No trades {{ 'match this filter' if f != 'all' else 'ingested yet — run python scripts/run_ingest.py' }}.</div></div>

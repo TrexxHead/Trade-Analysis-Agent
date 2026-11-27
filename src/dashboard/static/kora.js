@@ -4,7 +4,7 @@
   const K = (window.KORA = window.KORA || {});
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-  const COLORS = { g: '#93c93f', r: '#e0655f', a: '#fdb813', b: '#29abe2', m: 'rgba(230,237,233,.55)' };
+  const COLORS = { g: '#9bd35a', r: '#ff6b61', a: '#ffc34d', b: '#5ac8fa', m: 'rgba(235,235,245,.55)' };
   K.$ = $; K.$$ = $$; K.COLORS = COLORS;
 
   K.icons = () => window.lucide && window.lucide.createIcons();
@@ -70,12 +70,12 @@
       if (fc && ft) {
         fc.className = 'chipx ' + (d.feed.online ? 'g' : 'm');
         fc.querySelector('.dot').className = 'dot ' + (d.feed.online ? 'bg-g pulse' : 'bg-m');
-        ft.textContent = d.feed.online ? ((d.feed.source === 'sim' ? 'Simulated' : 'MetaApi') + (d.feed.latency ? ` · ${Math.round(d.feed.latency)} ms` : '')) : 'Feed offline';
+        ft.textContent = d.feed.online ? (({sim: 'Simulated', mt5: 'MT5 terminal', deriv: 'Deriv feed', metaapi: 'MetaApi'}[d.feed.source] || d.feed.source) + (d.feed.latency ? ` · ${Math.round(d.feed.latency)} ms` : '')) : 'Feed offline';
       }
       const ac = $('#agent-chip'), at = $('#agent-chip-text');
       if (ac && at) {
         ac.className = 'chipx ' + ({ RUNNING: 'g', PAUSED: 'a', STOPPED: 'r' }[d.feed.state] || 'm');
-        at.textContent = 'Kora ' + d.feed.state;
+        at.textContent = 'Kora · ' + d.feed.state.charAt(0) + d.feed.state.slice(1).toLowerCase();
       }
       if (d.mood !== baseMood) { baseMood = d.mood; applyMood(baseMood); }
       // new Kora decisions -> bell count, joy on fresh high-confidence setups
@@ -177,13 +177,13 @@
       ovs.forEach((o) => { if (Math.abs(o.price - (mn + mx) / 2) < span0 * 2.5) { mn = Math.min(mn, o.price); mx = Math.max(mx, o.price); } });
       const rg = mx - mn || 1; mn -= rg * 0.04; mx += rg * 0.04;
       const cw = (W - padR) / n, Y = (v) => (H - padB) * (1 - (v - mn) / (mx - mn));
-      x.font = '10px "IBM Plex Mono",monospace'; x.textAlign = 'left';
+      x.font = '10px -apple-system,"SF Pro Text",Inter,system-ui,sans-serif'; x.textAlign = 'left';
       for (let i = 0; i <= 5; i++) {
         const v = mn + (mx - mn) * i / 5, y = Y(v);
         x.strokeStyle = 'rgba(255,255,255,.055)'; x.beginPath(); x.moveTo(0, y); x.lineTo(W - padR, y); x.stroke();
-        x.fillStyle = 'rgba(230,237,233,.45)'; x.fillText(K.fm(v, dd), W - padR + 6, y + 3);
+        x.fillStyle = 'rgba(235,235,245,.45)'; x.fillText(K.fm(v, dd), W - padR + 6, y + 3);
       }
-      x.fillStyle = 'rgba(230,237,233,.38)'; x.textAlign = 'center';
+      x.fillStyle = 'rgba(235,235,245,.38)'; x.textAlign = 'center';
       const p2 = (v) => String(v).padStart(2, '0');
       for (let i = 10; i < n; i += 24) {
         const t = new Date(data[i].time);
@@ -195,19 +195,19 @@
       // key levels (faint bands)
       if (this.ind.levels) (d.levels || []).forEach((lv) => {
         const y = Y(lv.price); if (y < 0 || y > H - padB) return;
-        x.strokeStyle = lv.kind === 'support' ? 'rgba(147,201,63,.16)' : 'rgba(224,101,95,.16)';
+        x.strokeStyle = lv.kind === 'support' ? 'rgba(155,211,90,.16)' : 'rgba(255,107,97,.16)';
         x.lineWidth = 3; x.beginPath(); x.moveTo(0, y); x.lineTo(W - padR, y); x.stroke(); x.lineWidth = 1;
-        x.fillStyle = 'rgba(230,237,233,.35)'; x.font = '9px "IBM Plex Mono",monospace';
-        x.fillText(`${lv.tf} ${lv.kind === 'support' ? 'S' : 'R'}`, W - padR - 40, y - 5); x.font = '10px "IBM Plex Mono",monospace';
+        x.fillStyle = 'rgba(235,235,245,.35)'; x.font = '9px -apple-system,"SF Pro Text",Inter,system-ui,sans-serif';
+        x.fillText(`${lv.tf} ${lv.kind === 'support' ? 'S' : 'R'}`, W - padR - 40, y - 5); x.font = '10px -apple-system,"SF Pro Text",Inter,system-ui,sans-serif';
       });
       data.forEach((k, i) => {
-        const cx = i * cw + cw / 2, up = k.close >= k.open, col = up ? '#93c93f' : '#e0655f';
+        const cx = i * cw + cw / 2, up = k.close >= k.open, col = up ? '#9bd35a' : '#ff6b61';
         x.strokeStyle = col; x.beginPath(); x.moveTo(cx, Y(k.high)); x.lineTo(cx, Y(k.low)); x.stroke();
         const bw = Math.max(2, cw * 0.6), y1 = Y(Math.max(k.open, k.close)), y2 = Y(Math.min(k.open, k.close));
         x.fillStyle = col; x.fillRect(cx - bw / 2, y1, bw, Math.max(1, y2 - y1));
       });
       if (this.ind.vwap) {
-        x.strokeStyle = '#29abe2'; x.lineWidth = 1.4; x.beginPath();
+        x.strokeStyle = '#5ac8fa'; x.lineWidth = 1.4; x.beginPath();
         let pv = 0, vv = 0, day = null;
         data.forEach((k, i) => {
           const dday = k.time.slice(0, 10); if (dday !== day) { day = dday; pv = 0; vv = 0; }
@@ -218,7 +218,7 @@
       }
       if (this.ind.ema) {
         const all = d.candles; let e = all[0].close; const k2 = 2 / 21; const emas = all.map((k) => (e = k.close * k2 + e * (1 - k2)));
-        const off = all.length - n; x.strokeStyle = '#fdb813'; x.lineWidth = 1.4; x.beginPath();
+        const off = all.length - n; x.strokeStyle = '#ffc34d'; x.lineWidth = 1.4; x.beginPath();
         for (let i = 0; i < n; i++) { const px = i * cw + cw / 2, v = emas[off + i]; i ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); }
         x.stroke(); x.lineWidth = 1;
       }
@@ -226,21 +226,21 @@
         const y = Y(o.price); if (y < -2 || y > H - padB + 2) return;
         x.strokeStyle = o.color; x.setLineDash(o.dash ? [5, 4] : []); x.globalAlpha = 0.8;
         x.beginPath(); x.moveTo(0, y); x.lineTo(W - padR, y); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
-        x.fillStyle = o.color; x.font = '9px "IBM Plex Mono",monospace';
-        x.fillText(`${o.label} ${K.fm(o.price, dd)}`, o.kora ? 120 : 8, y - 4); x.font = '10px "IBM Plex Mono",monospace';
+        x.fillStyle = o.color; x.font = '9px -apple-system,"SF Pro Text",Inter,system-ui,sans-serif';
+        x.fillText(`${o.label} ${K.fm(o.price, dd)}`, o.kora ? 120 : 8, y - 4); x.font = '10px -apple-system,"SF Pro Text",Inter,system-ui,sans-serif';
       });
       const last = data[n - 1].close, ly = Y(last);
-      x.strokeStyle = 'rgba(253,184,19,.7)'; x.setLineDash([4, 4]); x.beginPath(); x.moveTo(0, ly); x.lineTo(W - padR, ly); x.stroke(); x.setLineDash([]);
-      x.fillStyle = '#fdb813'; x.fillRect(W - padR, ly - 9, padR - 2, 18);
-      x.fillStyle = '#14201c'; x.fillText(K.fm(last, dd), W - padR + 6, ly + 3);
+      x.strokeStyle = 'rgba(255,195,77,.7)'; x.setLineDash([4, 4]); x.beginPath(); x.moveTo(0, ly); x.lineTo(W - padR, ly); x.stroke(); x.setLineDash([]);
+      x.fillStyle = '#ffc34d'; x.fillRect(W - padR, ly - 9, padR - 2, 18);
+      x.fillStyle = '#0b0d0c'; x.fillText(K.fm(last, dd), W - padR + 6, ly + 3);
       if (this.mouse && this.mouse.x < W - padR) {
         const { x: mx2, y: my } = this.mouse;
         x.strokeStyle = 'rgba(255,255,255,.28)'; x.setLineDash([3, 3]);
         x.beginPath(); x.moveTo(mx2, 0); x.lineTo(mx2, H - padB); x.stroke();
         x.beginPath(); x.moveTo(0, my); x.lineTo(W - padR, my); x.stroke(); x.setLineDash([]);
         const pv = mn + (mx - mn) * (1 - my / (H - padB));
-        x.fillStyle = '#2a3a33'; x.fillRect(W - padR, my - 9, padR - 2, 18);
-        x.fillStyle = '#e6ede9'; x.fillText(K.fm(pv, dd), W - padR + 6, my + 3);
+        x.fillStyle = '#2c302f'; x.fillRect(W - padR, my - 9, padR - 2, 18);
+        x.fillStyle = '#f5f5f7'; x.fillText(K.fm(pv, dd), W - padR + 6, my + 3);
         const idx = Math.floor(mx2 / cw);
         if (data[idx] && this.opts.onHover) this.opts.onHover(data[idx]);
       } else if (this.opts.onHover) this.opts.onHover(data[n - 1]);
@@ -258,7 +258,7 @@
     let html = '';
     if (o >= 0 && cl >= o) html += `<rect x="${o * cw}" y="0" width="${(cl - o + 1) * cw}" height="${H}" fill="rgba(41,171,226,.09)"/>`;
     cs.forEach((k, i) => {
-      const col = k.close >= k.open ? '#93c93f' : '#e0655f', cx = i * cw + cw / 2;
+      const col = k.close >= k.open ? '#9bd35a' : '#ff6b61', cx = i * cw + cw / 2;
       html += `<line x1="${cx}" x2="${cx}" y1="${Y(k.high)}" y2="${Y(k.low)}" stroke="${col}" stroke-width=".8"/>`;
       const y1 = Y(Math.max(k.open, k.close)), y2 = Y(Math.min(k.open, k.close));
       html += `<rect x="${cx - cw * 0.32}" y="${y1}" width="${Math.max(1, cw * 0.64)}" height="${Math.max(0.8, y2 - y1)}" fill="${col}"/>`;

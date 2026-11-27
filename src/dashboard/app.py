@@ -28,7 +28,7 @@ from src.analysis.metrics import breakdown_by_hour, breakdown_by_weekday, comput
 from src.dashboard import data as D
 from src.store.db import (
     analyses_between, get_flags, get_quotes, get_setup_stats, get_trade, get_trade_charts, get_trades, kora_connection,
-    kv_get, kv_set, latest_analyses, list_decisions, upsert_annotation,
+    kv_get, kv_set, latest_analyses, list_decisions, list_plans, upsert_annotation,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +41,7 @@ app.secret_key = os.environ.get("FLASK_SECRET") or secrets.token_hex(16)
 PAGES = {
     "dashboard": ("Dashboard", "Portfolio overview — live", "/", "layout-dashboard"),
     "charts": ("Charts", "Multi-timeframe workspace", "/charts", "candlestick-chart"),
-    "kora": ("Kora — Market Analyst", "Analysis, setups & reasoning — Kora never trades", "/kora", "bot"),
+    "kora": ("Kora", "Market analyst · setups & reasoning · never trades", "/kora", "bot"),
     "positions": ("Positions", "Open trades & history", "/positions", "layers"),
     "risk": ("Risk", "Exposure, limits & stress", "/risk", "shield"),
     "analytics": ("Analytics", "Quant performance review", "/analytics", "bar-chart-3"),
@@ -119,7 +119,11 @@ def dashboard():
     top = max(reps.values(), key=lambda r: r.get("opportunity") or 0, default=None)
     positions = D.enrich_positions(conn, acct["positions"], acct["equity"])
     risk = D.risk_model(conn, acct, positions)
-    return render_template("dashboard.html", active="dashboard", acct=acct, q=q, curve=curve,
+    board = sorted(((r, r["candidates"][0]) for r in reps.values() if r.get("candidates")),
+                   key=lambda rc: -rc[1]["confidence"])[:5]
+    sparks = kv_get(conn, "sparklines", {}) or {}
+    return render_template("dashboard.html", active="dashboard", acct=acct, q=q, curve=curve, board=board,
+                           sparks=sparks, rows=D.instrument_rows(conn), pstats=D.plan_stats(list_plans(conn)),
                            curve_label=curve_label, top=top, reps=reps, positions=positions, risk=risk,
                            sessions=sessions(), decisions=list_decisions(conn, 1), n_trades=len(trades))
 
@@ -147,6 +151,7 @@ def kora():
     return render_template("kora.html", active="kora", focus=focus, code=code, rows=rows,
                            decisions=list_decisions(conn, 60), last_cycle=kv_get(conn, "last_cycle"),
                            n_analyses=n_analyses, n_trained=len(get_setup_stats(conn)),
+                           plans=list_plans(conn, limit=40), pstats=D.plan_stats(list_plans(conn, limit=10000)),
                            control=kv_get(conn, "agent_control") or {"state": "RUNNING"})
 
 
@@ -162,7 +167,8 @@ def kora_report(code):
     stats = {k[1:]: v for k, v in get_setup_stats(conn, code).items()}
     decs = [d for d in list_decisions(conn, 200) if d["code"] == code][:12]
     return render_template("kora_report.html", active="kora", sub="report", rep=rep, meta=meta,
-                           stats=stats, decisions=decs, llm_ok=llm.available())
+                           stats=stats, decisions=decs, llm_ok=llm.available(),
+                           plans=list_plans(conn, code, 20), pstats=D.plan_stats(list_plans(conn, code, 10000)))
 
 
 @app.route("/positions")
@@ -273,7 +279,8 @@ def econ_calendar():
             continue
         if imp == "all" and e["impact"] in ("Low", "Non-Economic", "Holiday") and e["currency"] not in watched:
             continue
-        days[t.date().isoformat()].append({**e, "t": t})
+        affects = [m["code"] for m in instruments() if e["currency"] in m.get("currencies", [])]
+        days[t.date().isoformat()].append({**e, "t": t, "affects": affects})
     groups = []
     for d, evs in sorted(days.items()):
         dd = date.fromisoformat(d)
@@ -302,6 +309,7 @@ def settings_page():
     return render_template("settings.html", active="settings", keys=keys, channels=notify.channels(),
                            instruments=instruments(), defaults=DEFAULT_SETTINGS, llm_ok=llm.available(),
                            deriv_ok=bool(os.environ.get("DERIV_API_TOKEN")),
+                           mt5_pkg=__import__("src.ingest.mt5_local", fromlist=["available"]).available(),
                            metaapi_ok=bool(os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID")))
 
 
@@ -438,15 +446,8 @@ def api_chart(code):
     conn = _conn()
     feed = D.feed_status(conn)
     try:
-        if feed["sim"] or os.environ.get("KORA_DATA_SOURCE", "").lower() == "sim":
-            from src.live.sim import gen_candles
-            candles = gen_candles(code, tf, 140)
-        elif os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID"):
-            from src.ingest.metatrader import fetch_candles
-            candles = fetch_candles(meta["symbol"], tf, 140)
-        else:
-            return jsonify({"error": "No data source: set METAAPI_TOKEN / METAAPI_ACCOUNT_ID in .env "
-                                     "(or run with KORA_DATA_SOURCE=sim)."}), 503
+        from src.live.sources import fetch_candles_sync
+        candles = fetch_candles_sync(meta, tf, 140, feed["source"] if feed["online"] else None)
     except Exception as e:
         print(f"chart candles failed for {code}: {e}", file=sys.stderr)
         return jsonify({"error": f"Couldn't fetch candles: {e}"}), 502

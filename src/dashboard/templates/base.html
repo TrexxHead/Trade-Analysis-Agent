@@ -7,7 +7,7 @@
 {% set subp = SUBPAGES.get(sub) if sub else None %}
 <title>{% block title %}{{ (subp or page or ['Kora Terminal'])[0] }} · Kora Terminal{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Jost:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='kora.css') }}">
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -45,16 +45,16 @@
               <path d="M17 21.6 Q19.6 20.4 22 21.4" stroke="#241a12" stroke-width="1.4" fill="none" stroke-linecap="round"></path>
               <path d="M26 21.4 Q28.4 20.4 31 21.6" stroke="#241a12" stroke-width="1.4" fill="none" stroke-linecap="round"></path>
             </g>
-            <circle cx="16.6" cy="29.5" r="1.4" fill="rgba(224,101,95,.25)"></circle>
-            <circle cx="31.4" cy="29.5" r="1.4" fill="rgba(224,101,95,.25)"></circle>
+            <circle cx="16.6" cy="29.5" r="1.4" fill="rgba(255,107,97,.25)"></circle>
+            <circle cx="31.4" cy="29.5" r="1.4" fill="rgba(255,107,97,.25)"></circle>
             <path class="av-mouth" d="M18.5 31.5 Q24 35 29.5 31.5" stroke="#4a2418" stroke-width="1.5" fill="none" stroke-linecap="round"></path>
           </g>
         </svg>
         <span class="spark">✦</span>
       </div>
       <div>
-        <div class="brand-word">KORA</div>
-        <div class="brand-sub">TRADING TERMINAL</div>
+        <div class="brand-word">Kora</div>
+        <div class="brand-sub">Trading Terminal</div>
       </div>
     </div>
     <nav class="nav">
@@ -92,16 +92,16 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="tb-right">
-        <div class="tb-stat"><div class="l">DAILY P/L</div><div class="v c-{{ D.tone(acct.day_pl) }}" data-live="daypl">{{ D.smoney(acct.day_pl) }}</div></div>
-        <div class="tb-stat"><div class="l">DRAWDOWN</div><div class="v" data-live="dd">{{ D.pct(acct.drawdown_pct) if acct.drawdown_pct is not none else '—' }}</div></div>
+        <div class="tb-stat"><div class="l">Daily P/L</div><div class="v c-{{ D.tone(acct.day_pl) }}" data-live="daypl">{{ D.smoney(acct.day_pl) }}</div></div>
+        <div class="tb-stat"><div class="l">Drawdown</div><div class="v" data-live="dd">{{ D.pct(acct.drawdown_pct) if acct.drawdown_pct is not none else '—' }}</div></div>
         <div class="vsep"></div>
         <span id="feed-chip" class="chipx {{ 'g' if feed.online else 'm' }}">
           <span class="dot {{ 'bg-g pulse' if feed.online else 'bg-m' }}"></span>
-          <span id="feed-chip-text">{% if feed.online %}{{ 'Simulated' if feed.sim else 'MetaApi' }}{% if feed.latency %} · {{ feed.latency|round|int }} ms{% endif %}{% else %}Feed offline{% endif %}</span>
+          <span id="feed-chip-text">{% if feed.online %}{{ {'sim': 'Simulated', 'mt5': 'MT5 terminal', 'deriv': 'Deriv feed', 'metaapi': 'MetaApi'}.get(feed.source, feed.source) }}{% if feed.latency %} · {{ feed.latency|round|int }} ms{% endif %}{% else %}Feed offline{% endif %}</span>
         </span>
         {% set st = feed.state %}
         <a href="/kora" id="agent-chip" class="chipx {{ {'RUNNING':'g','PAUSED':'a','STOPPED':'r'}.get(st, 'm') }}">
-          <i data-lucide="bot"></i><span id="agent-chip-text">Kora {{ st }}</span>
+          <i data-lucide="bot"></i><span id="agent-chip-text">Kora · {{ st|title }}</span>
         </a>
         <span class="clock" id="clock"></span>
         <a href="/kora#log" class="bell" title="Kora decision log"><i data-lucide="bell"></i><span class="n" id="bell-n"></span></a>

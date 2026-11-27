@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import spark %}
 {% block content %}
 <div class="screen">
   {% if not feed.online and not n_trades %}
@@ -14,24 +15,24 @@
     <div class="stat"><div class="lbl-up">Win rate</div><div class="v">{{ D.pct(q.win_rate, 0) if q.win_rate is defined else '—' }}</div><div class="s">{{ q.trades or 0 }} trades · PF {{ '%.2f'|format(q.pf) if q.pf else '—' }}</div></div>
   </div>
 
-  <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(275px,1fr);align-items:stretch">
+  <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(300px,1fr);align-items:start">
     <div class="panel" style="padding:18px 20px">
       {% set eq = D.svg_path(curve) %}
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
         <h3 class="h3 lg">Equity curve</h3>
-        {% if feed.online %}<span class="mono c-g" style="display:inline-flex;align-items:center;gap:5px;font-family:var(--font-display);font-weight:600;font-size:10px;letter-spacing:.08em"><span class="dot bg-g" style="width:6px;height:6px;animation:kpulse 1.6s infinite"></span>LIVE</span>{% endif %}
+        {% if feed.online %}<span class="mono c-g" style="display:inline-flex;align-items:center;gap:5px;font-family:var(--font-display);font-weight:600;font-size:10px;letter-spacing:.08em"><span class="dot bg-g" style="width:6px;height:6px;animation:kpulse 1.6s infinite"></span>Live</span>{% endif %}
         {% if curve|length > 1 %}<span class="mono c-{{ D.tone(curve[-1] - curve[0]) }}" style="margin-left:auto;font-size:11px">{{ D.smoney(curve[-1] - curve[0]) }} over period</span>{% endif %}
       </div>
       {% if eq.line %}
       <svg viewBox="0 0 600 190" preserveAspectRatio="none" style="width:100%;height:225px;display:block">
-        <defs><linearGradient id="keq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(147,201,63,.26)"></stop><stop offset="1" stop-color="rgba(147,201,63,0)"></stop></linearGradient></defs>
+        <defs><linearGradient id="keq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(155,211,90,.26)"></stop><stop offset="1" stop-color="rgba(155,211,90,0)"></stop></linearGradient></defs>
         <line x1="0" y1="47" x2="600" y2="47" stroke="rgba(255,255,255,.05)"></line>
         <line x1="0" y1="95" x2="600" y2="95" stroke="rgba(255,255,255,.05)"></line>
         <line x1="0" y1="142" x2="600" y2="142" stroke="rgba(255,255,255,.05)"></line>
         <path d="{{ eq.area }}" fill="url(#keq)"></path>
-        <path d="{{ eq.line }}" fill="none" stroke="#93c93f" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+        <path d="{{ eq.line }}" fill="none" stroke="#9bd35a" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
       </svg>
-      <div class="mono" style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:rgba(230,237,233,.5)">
+      <div class="mono" style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:rgba(235,235,245,.5)">
         <span>High {{ D.money(eq.hi) }}</span><span>Low {{ D.money(eq.lo) }}</span><span style="margin-left:auto">{{ curve_label }}</span>
       </div>
       {% else %}
@@ -44,11 +45,11 @@
       <div class="panel hero">
         <div style="display:flex;align-items:center;gap:9px">
           <span class="dot bg-{{ {'RUNNING':'g','PAUSED':'a','STOPPED':'r'}.get(st,'m') }}" style="width:9px;height:9px;animation:kpulse 1.8s infinite"></span>
-          <span style="font-family:var(--font-display);font-weight:800;font-size:14px;letter-spacing:.06em;color:#fff">KORA · {{ st }}</span>
+          <span style="font-family:var(--font-display);font-weight:700;font-size:14px;letter-spacing:-.01em;color:#fff">Kora · {{ st|title }}</span>
           <span class="tag" style="margin-left:auto;background:rgba(255,255,255,.08);letter-spacing:.08em">Analysis only</span>
         </div>
         {% if top %}
-        <div style="margin-top:12px;font-size:12px;color:rgba(230,237,233,.65)">Top opportunity</div>
+        <div style="margin-top:12px;font-size:12px;color:rgba(235,235,245,.65)">Top opportunity</div>
         <div style="font-family:var(--font-display);font-weight:700;font-size:15px;color:#fff;margin-top:2px">
           {% if top.candidates %}{{ top.candidates[0].direction|title }} {{ top.code }} · {{ top.candidates[0].setup_name }}{% else %}{{ top.bias }} {{ top.code }} · no setup yet{% endif %}
         </div>
@@ -57,10 +58,10 @@
           <div class="bar" style="flex:1;background:rgba(255,255,255,.1)"><i class="grad" style="width:{{ conf }}%"></i></div>
           <span class="mono c-g" style="font-weight:600;font-size:12px">{{ conf }}%</span>
         </div>
-        <div style="font-size:10.5px;color:rgba(230,237,233,.5);margin-top:4px">{{ 'Setup confidence' if top.candidates else 'Bias conviction' }} · regime: <span class="c-b">{{ top.regime.primary }}</span></div>
-        {% if decisions %}<div class="mono" style="margin-top:12px;padding:9px 11px;background:rgba(0,0,0,.25);border-radius:11px;font-size:11px;color:rgba(230,237,233,.72)"><span data-localtime="{{ decisions[0].created_at }}"></span> — {{ decisions[0].action }}</div>{% endif %}
+        <div style="font-size:10.5px;color:rgba(235,235,245,.5);margin-top:4px">{{ 'Setup confidence' if top.candidates else 'Bias conviction' }} · regime: <span class="c-b">{{ top.regime.primary }}</span></div>
+        {% if decisions %}<div class="mono" style="margin-top:12px;padding:9px 11px;background:rgba(0,0,0,.25);border-radius:11px;font-size:11px;color:rgba(235,235,245,.72)"><span data-localtime="{{ decisions[0].created_at }}"></span> — {{ decisions[0].action }}</div>{% endif %}
         {% else %}
-        <div style="margin-top:12px;font-size:12px;color:rgba(230,237,233,.65);line-height:1.6">No analysis yet. Start the Kora service and it will break down all {{ search_index|selectattr('kind','equalto','instrument')|list|length }} instruments within a minute.</div>
+        <div style="margin-top:12px;font-size:12px;color:rgba(235,235,245,.65);line-height:1.6">No analysis yet. Start the Kora service and it will break down all {{ search_index|selectattr('kind','equalto','instrument')|list|length }} instruments within a minute.</div>
         {% endif %}
         <div style="margin-top:12px"><a class="btn-inv" href="/kora">Open control center</a></div>
       </div>
@@ -69,7 +70,7 @@
         <h3 class="h3" style="margin-bottom:10px">Sessions <span class="note" style="font-weight:500">(UTC)</span></h3>
         <div style="display:flex;flex-direction:column;gap:8px">
           {% for s in sessions %}
-          <div style="display:flex;align-items:center;font-size:12.5px"><span style="color:rgba(230,237,233,.7)">{{ s.name }}</span><span class="mono c-{{ s.tone }}" style="margin-left:auto;font-size:11.5px{% if s.tone == 'muted' %};color:var(--muted){% endif %}">{{ s.state }}</span></div>
+          <div style="display:flex;align-items:center;font-size:12.5px"><span style="color:rgba(235,235,245,.7)">{{ s.name }}</span><span class="mono c-{{ s.tone }}" style="margin-left:auto;font-size:11.5px{% if s.tone == 'muted' %};color:var(--muted){% endif %}">{{ s.state }}</span></div>
           {% endfor %}
         </div>
         <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:10.5px;color:var(--subtle)">Synthetic indices trade 24/7 — no session gaps.</div>
@@ -77,7 +78,38 @@
     </div>
   </div>
 
-  <div class="grid" style="grid-template-columns:minmax(0,1.55fr) minmax(275px,1fr);align-items:stretch">
+  <div class="grid" style="grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);align-items:start">
+    <div class="panel flush">
+      <div style="padding:18px 22px 4px;display:flex;align-items:center;gap:10px">
+        <h3 class="h3 lg">Kora's board</h3><span class="note">Best plan per instrument, ranked</span>
+        <a href="/kora" style="margin-left:auto;font-weight:500;font-size:13px">All breakdowns →</a>
+      </div>
+      {% for rep, c in board %}
+      <a href="/kora/{{ rep.code }}" class="drow" style="grid-template-columns:76px 1fr 120px 70px;padding:13px 22px">
+        <span style="font-weight:600;color:#fff">{{ rep.code }}</span>
+        <span style="min-width:0"><span class="dir {{ c.direction }}">{{ c.direction|upper }}</span> <span style="color:var(--text)">{{ c.setup_name }}</span>
+          <span class="faint" style="display:block;font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.levels_text }}</span></span>
+        <span style="display:flex;align-items:center;gap:8px"><span class="bar" style="flex:1"><i class="grad" style="width:{{ c.confidence }}%"></i></span><span class="mono" style="font-weight:600;font-size:13px">{{ c.confidence }}%</span></span>
+        <span style="text-align:right"><span class="grade {{ c.grade }}">{{ c.grade }}</span></span>
+      </a>
+      {% else %}
+      <div class="empty">No setups on the board right now. Kora re-checks every {{ settings.interval_minutes }} minutes and alerts you when one qualifies.</div>
+      {% endfor %}
+      <div style="padding:12px 22px 16px" class="note">Forward record: {{ pstats.resolved }} resolved{% if pstats.win_rate is not none %} · {{ '%.0f'|format(pstats.win_rate) }}% hit TP1 · {{ '%+.2f'|format(pstats.avg_r) }}R avg{% endif %} · {{ pstats.open }} live</div>
+    </div>
+    <div class="panel flush">
+      <div style="padding:18px 22px 6px"><h3 class="h3 lg">Watchlist</h3></div>
+      {% for r in rows if not r.disabled %}
+      <a href="/charts?code={{ r.code }}&tf=H1" class="drow" style="grid-template-columns:72px 1fr 96px;gap:12px;padding:9px 22px">
+        <span><span style="font-weight:600;color:#fff;display:block">{{ r.code }}</span><span class="faint" style="font-size:11.5px">{{ r.name }}</span></span>
+        <span>{{ spark(sparks.get(r.code), D) }}</span>
+        <span style="text-align:right"><span class="mono" style="display:block;font-weight:600;color:var(--text)" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span><span class="mono c-{{ r.chg_t }}" style="font-size:12px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</span></span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);align-items:stretch">
     <div class="panel">
       <div class="ph"><h3 class="h3 lg">Open positions</h3><a href="/positions" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:11.5px">Manage →</a></div>
       {% for p in positions %}

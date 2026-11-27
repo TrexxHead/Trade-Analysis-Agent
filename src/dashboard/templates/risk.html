@@ -6,7 +6,7 @@
       <h3 class="h3" style="margin-bottom:6px;align-self:flex-start">Risk gauge</h3>
       <div style="position:relative;width:200px;height:118px" title="40% portfolio heat vs {{ rm.heat_cap }}% cap · 25% daily loss used · 20% drawdown buffer used · 15% any position without a stop">
         <svg width="200" height="118" viewBox="0 0 200 118">
-          <defs><linearGradient id="krg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#93c93f"></stop><stop offset=".55" stop-color="#fdb813"></stop><stop offset="1" stop-color="#e0655f"></stop></linearGradient></defs>
+          <defs><linearGradient id="krg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9bd35a"></stop><stop offset=".55" stop-color="#ffc34d"></stop><stop offset="1" stop-color="#ff6b61"></stop></linearGradient></defs>
           <path d="M 20 105 A 80 80 0 0 1 180 105" stroke="rgba(255,255,255,.08)" stroke-width="13" fill="none" stroke-linecap="round"></path>
           <path d="M 20 105 A 80 80 0 0 1 180 105" stroke="url(#krg)" stroke-width="13" fill="none" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="{{ '%.1f'|format(251.3 * (1 - rm.score / 100)) }}" style="transition:stroke-dashoffset .6s var(--ease-standard)"></path>
         </svg>
@@ -30,9 +30,9 @@
       <div style="display:flex;flex-direction:column;gap:9px">
         {% for p in pos %}
         <div style="display:flex;align-items:center;gap:10px;font-size:11.5px">
-          <span class="mono" style="width:70px;color:rgba(230,237,233,.65)">{{ p.code }}</span>
+          <span class="mono" style="width:70px;color:rgba(235,235,245,.65)">{{ p.code }}</span>
           <div class="bar" style="flex:1"><i class="bg-{{ 'b' if p.risk_pct is not none else 'r' }}" style="width:{{ [100, (p.risk_pct / 2 * 100) if p.risk_pct is not none else 100]|min }}%"></i></div>
-          <span class="mono" style="color:rgba(230,237,233,.7)">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'no SL' }}</span>
+          <span class="mono" style="color:rgba(235,235,245,.7)">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'no SL' }}</span>
         </div>
         {% else %}<div class="empty">No open positions.</div>{% endfor %}
       </div>
@@ -57,13 +57,13 @@
     <div class="ph"><h3 class="h3">Correlation heatmap — watched instruments</h3><span class="r">{% if cm.codes %}Pearson, H1 returns, last {{ cm.bars }} common bars{% endif %}</span></div>
     {% if cm.codes %}
     <div style="overflow-x:auto">
-      <div style="display:flex;gap:5px;margin-left:76px;margin-bottom:5px">{% for s in cm.codes %}<span class="mono" style="width:58px;flex:none;text-align:center;font-size:10px;color:rgba(230,237,233,.5)">{{ s }}</span>{% endfor %}</div>
+      <div style="display:flex;gap:5px;margin-left:76px;margin-bottom:5px">{% for s in cm.codes %}<span class="mono" style="width:58px;flex:none;text-align:center;font-size:10px;color:rgba(235,235,245,.5)">{{ s }}</span>{% endfor %}</div>
       {% for a in cm.codes %}
       <div style="display:flex;gap:5px;margin-bottom:5px;align-items:center">
-        <span class="mono" style="width:70px;flex:none;font-size:10px;color:rgba(230,237,233,.5)">{{ a }}</span>
+        <span class="mono" style="width:70px;flex:none;font-size:10px;color:rgba(235,235,245,.5)">{{ a }}</span>
         {% for b in cm.codes %}{% set v = cm.matrix[a][b] %}
         <span class="mono" style="width:58px;height:32px;flex:none;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10.5px;
-          {% if v is none %}background:rgba(255,255,255,.03);color:var(--faint){% elif v > 0 %}background:rgba(147,201,63,{{ '%.2f'|format(v * 0.5 + 0.05) }});color:{{ '#0f1a14' if v > 0.6 else 'rgba(230,237,233,.78)' }}{% else %}background:rgba(224,101,95,{{ '%.2f'|format(-v * 0.55 + 0.05) }});color:{{ '#0f1a14' if v < -0.6 else 'rgba(230,237,233,.78)' }}{% endif %}">{{ '%.2f'|format(v) if v is not none else '—' }}</span>
+          {% if v is none %}background:rgba(255,255,255,.03);color:var(--faint){% elif v > 0 %}background:rgba(155,211,90,{{ '%.2f'|format(v * 0.5 + 0.05) }});color:{{ '#0b0d0c' if v > 0.6 else 'rgba(235,235,245,.78)' }}{% else %}background:rgba(255,107,97,{{ '%.2f'|format(-v * 0.55 + 0.05) }});color:{{ '#0b0d0c' if v < -0.6 else 'rgba(235,235,245,.78)' }}{% endif %}">{{ '%.2f'|format(v) if v is not none else '—' }}</span>
         {% endfor %}
       </div>
       {% endfor %}

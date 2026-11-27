@@ -15,12 +15,12 @@
       <span style="font-size:11.5px;color:var(--muted)">{{ r.name }}</span>
       <span class="mono" style="font-size:12px" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span>
       <span class="mono c-{{ r.chg_t }}" style="font-size:11.5px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</span>
-      <span class="mono" style="font-size:11.5px;color:rgba(230,237,233,.6)">{{ D.price(r.atr, r.digits) }}</span>
+      <span class="mono" style="font-size:11.5px;color:rgba(235,235,245,.6)">{{ D.price(r.atr, r.digits) }}</span>
       <span style="display:flex;align-items:center"><span class="bar t5" style="flex:1"><i class="bg-a" style="width:{{ r.vol or 0 }}%"></i></span></span>
       <span style="display:flex;align-items:center"><span class="bar t5" style="flex:1"><i class="bg-b" style="width:{{ [100, (r.trend or 0) * 2]|min }}%"></i></span></span>
-      <span style="font-size:11px;color:rgba(230,237,233,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% if r.best %}<span class="dir {{ r.best.direction }}">{{ r.best.direction|upper }}</span> {{ r.best.setup_name }}{% elif r.rep %}{{ r.rep.bias }} · {{ r.rep.regime.primary }}{% else %}—{% endif %}</span>
+      <span style="font-size:11px;color:rgba(235,235,245,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% if r.best %}<span class="dir {{ r.best.direction }}">{{ r.best.direction|upper }}</span> {{ r.best.setup_name }}{% elif r.rep %}{{ r.rep.bias }} · {{ r.rep.regime.primary }}{% else %}—{% endif %}</span>
       {% set s = r.score %}
-      <span class="mono" style="font-weight:600;font-size:12px;border-radius:8px;padding:4px 0;text-align:center;{% if s is none %}color:var(--faint);background:rgba(255,255,255,.04){% elif s >= 70 %}color:var(--g);background:rgba(147,201,63,.16){% elif s >= 55 %}color:var(--a);background:rgba(253,184,19,.13){% else %}color:var(--muted);background:rgba(255,255,255,.07){% endif %}">{{ s if s is not none else '—' }}</span>
+      <span class="mono" style="font-weight:600;font-size:12px;border-radius:8px;padding:4px 0;text-align:center;{% if s is none %}color:var(--faint);background:rgba(255,255,255,.04){% elif s >= 70 %}color:var(--g);background:rgba(155,211,90,.16){% elif s >= 55 %}color:var(--a);background:rgba(255,195,77,.13){% else %}color:var(--muted);background:rgba(255,255,255,.07){% endif %}">{{ s if s is not none else '—' }}</span>
     </a>
     {% endfor %}
     </div>

@@ -88,3 +88,14 @@ def test_fundamentals_rules():
     assert f["event_risk"] and f["lean"] < 0  # strong USD jobs expected -> headwind for gold
     assert not instrument_fundamentals(by_code()["V75"], cal, {})["applicable"]
     assert len(sessions()) == 4
+
+
+def test_resolve_plan_forward():
+    from src.analyst.calibration import resolve_plan
+    t0 = "2026-01-05T04:00:00+00:00"
+    c = bars([100, 101, 103, 105], start=datetime(2026, 1, 5, 5, tzinfo=timezone.utc))
+    plan = {"direction": "long", "entry_type": "market", "entry": 100, "stop": 98, "tp1": 104}
+    assert resolve_plan(c, t0, plan) == ("won", 2.0)
+    assert resolve_plan(c[:1], t0, plan) is None  # still live
+    lim = {**plan, "entry_type": "limit", "entry": 90, "stop": 88}
+    assert resolve_plan(bars([100] * 6, start=datetime(2026, 1, 5, 5, tzinfo=timezone.utc)), t0, lim) == ("not_filled", None)

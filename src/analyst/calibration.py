@@ -123,3 +123,32 @@ def calibrate_confidence(score: float, rr: float, stats: dict | None, prior_n: i
         "note": (f"Historically {wins}/{n} hit TP1 ({wins / n:.0%}), avg {stats['expectancy']:+.2f}R"
                  + (" - small sample, treat as indicative" if n < 25 else "")),
     }
+
+
+def resolve_plan(candles: list[dict], created_at: str, plan: dict) -> tuple[str, float | None] | None:
+    """Forward-test a live plan against candles that printed after it was
+    issued. Returns (status, r) once decided - 'won', 'lost', 'expired'
+    (marked to market after MAX_HOLD_BARS) or 'not_filled' - or None while
+    it is still live. Same fill/exit rules as historical calibration."""
+    after = [c for c in candles if c["time"] > created_at]
+    if not after:
+        return None
+    sign = 1 if plan["direction"] == "long" else -1
+    entry, stop, tp = plan["entry"], plan["stop"], plan["tp1"]
+    risk = abs(entry - stop) or 1e-12
+    start = 0
+    if plan["entry_type"] == "limit":
+        fill = next((j for j, c in enumerate(after[:LIMIT_FILL_BARS])
+                     if (sign > 0 and c["low"] <= entry) or (sign < 0 and c["high"] >= entry)), None)
+        if fill is None:
+            return ("not_filled", None) if len(after) >= LIMIT_FILL_BARS else None
+        start = fill
+    for j in range(start, min(len(after), start + MAX_HOLD_BARS)):
+        c = after[j]
+        if (c["low"] <= stop) if sign > 0 else (c["high"] >= stop):
+            return "lost", -1.0
+        if ((c["high"] >= tp) if sign > 0 else (c["low"] <= tp)) and not (plan["entry_type"] == "limit" and j == start):
+            return "won", round(abs(tp - entry) / risk, 2)
+    if len(after) >= start + MAX_HOLD_BARS:
+        return "expired", round(sign * (after[start + MAX_HOLD_BARS - 1]["close"] - entry) / risk, 2)
+    return None

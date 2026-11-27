@@ -7,7 +7,7 @@
     <div class="mini"><span class="l">Unrealized P/L</span><div class="v c-{{ D.tone(acct.open_pl) }}" data-live="openpl">{{ D.smoney(acct.open_pl) }}</div></div>
     <div class="mini"><span class="l">Margin used</span><div class="v">{{ D.money(acct.margin) }}</div></div>
     <div class="mini" title="Sum of each position's loss-to-stop as % of equity (cap {{ risk.heat_cap }}%)"><span class="l">Portfolio heat</span><div class="v c-{{ 'r' if risk.heat and risk.heat > risk.heat_cap else 'a' }}">{{ D.pct(risk.heat) }}</div></div>
-    {% if risk.uncapped %}<div class="mini" style="border-color:rgba(224,101,95,.35)"><span class="l">No stop-loss</span><div class="v c-r">{{ risk.uncapped|length }}</div></div>{% endif %}
+    {% if risk.uncapped %}<div class="mini" style="border-color:rgba(255,107,97,.35)"><span class="l">No stop-loss</span><div class="v c-r">{{ risk.uncapped|length }}</div></div>{% endif %}
   </div>
   <div class="info"><i data-lucide="info"></i><span>Read-only view of your MT5 positions. Kora is analysis-only, so position management (closing, moving stops) stays in your MT5 terminal — each row shows how the trade sits against Kora's current analysis.</span></div>
   <div class="panel flush">
@@ -18,11 +18,11 @@
         <span class="chev">▸</span>
         <span class="mono" style="font-weight:600;font-size:12.5px;color:#fff">{{ p.code }}</span>
         <span class="dir {{ p.direction }}" style="padding:3px 0">{{ p.direction|upper }}</span>
-        <span class="mono" style="font-size:12px;color:rgba(230,237,233,.7)">{{ p.entry_s }}</span>
+        <span class="mono" style="font-size:12px;color:rgba(235,235,245,.7)">{{ p.entry_s }}</span>
         <span class="mono" style="font-size:12px" data-live="pos:{{ p.id }}:cur">{{ p.cur_s }}</span>
         <span class="mono c-r" style="font-size:12px">{{ p.sl_s }}</span>
         <span class="mono c-g" style="font-size:12px">{{ p.tp_s }}</span>
-        <span class="mono" style="font-size:12px;color:rgba(230,237,233,.7)">{{ p.volume }}</span>
+        <span class="mono" style="font-size:12px;color:rgba(235,235,245,.7)">{{ p.volume }}</span>
         <span class="c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.kora.text if p.kora else '—' }}</span>
         <span class="mono c-{{ p.pnl_t }}" style="font-weight:600;font-size:12.5px;text-align:right" data-live="pos:{{ p.id }}:pnl">{{ p.pnl_s }}</span>
       </a>

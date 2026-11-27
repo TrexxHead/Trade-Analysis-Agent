@@ -478,3 +478,46 @@ def alert_already_sent(conn, key: str, within_hours: float) -> bool:
 def mark_alert_sent(conn, key: str) -> None:
     conn.execute("INSERT OR REPLACE INTO alerts_sent (dedupe_key, sent_at) VALUES (?, ?)", (key, _now()))
     conn.commit()
+
+
+PLANS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS kora_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dedupe_key TEXT UNIQUE NOT NULL,
+    code TEXT NOT NULL, setup TEXT NOT NULL, setup_name TEXT, direction TEXT NOT NULL,
+    grade TEXT, confidence REAL, entry_type TEXT, entry REAL, stop REAL, tp1 REAL, tp2 REAL, rr1 REAL,
+    digits INTEGER, created_at TEXT NOT NULL, analysis_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'open', resolved_at TEXT, result_r REAL
+);
+CREATE INDEX IF NOT EXISTS idx_plans_status ON kora_plans(status);
+"""
+
+
+def record_plan(conn, key: str, code: str, cand: dict, digits: int, analysis_id: int | None) -> bool:
+    conn.executescript(PLANS_SCHEMA)
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO kora_plans (dedupe_key, code, setup, setup_name, direction, grade, confidence, entry_type, "
+        "entry, stop, tp1, tp2, rr1, digits, created_at, analysis_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (key, code, cand["setup"], cand["setup_name"], cand["direction"], cand["grade"], cand["confidence"],
+         cand["entry_type"], cand["entry"], cand["stop"], cand["tp1"], cand["tp2"], cand["rr1"], digits, _now(), analysis_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def open_plans(conn) -> list[dict]:
+    conn.executescript(PLANS_SCHEMA)
+    return [dict(r) for r in conn.execute("SELECT * FROM kora_plans WHERE status = 'open'")]
+
+
+def resolve_plan_row(conn, plan_id: int, status: str, result_r: float | None) -> None:
+    conn.execute("UPDATE kora_plans SET status = ?, result_r = ?, resolved_at = ? WHERE id = ?",
+                 (status, result_r, _now(), plan_id))
+    conn.commit()
+
+
+def list_plans(conn, code: str | None = None, limit: int = 200) -> list[dict]:
+    conn.executescript(PLANS_SCHEMA)
+    q, p = "SELECT * FROM kora_plans", []
+    if code:
+        q, p = q + " WHERE code = ?", [code]
+    return [dict(r) for r in conn.execute(q + " ORDER BY id DESC LIMIT ?", (*p, limit))]

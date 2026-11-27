@@ -25,8 +25,10 @@ from src.analyst.fundamentals import fetch_calendar, instrument_fundamentals
 from src.analyst import ta
 from src.store.db import (
     add_decision, get_quotes, get_setup_stats, get_trade_charts, get_trades, kora_connection, kv_get, kv_set,
-    latest_analyses, list_decisions, prune_analyses, save_analysis, save_trade_chart, upsert_quotes,
+    latest_analyses, list_decisions, open_plans, prune_analyses, record_plan, resolve_plan_row, save_analysis,
+    save_trade_chart, upsert_quotes,
 )
+from src.analyst.calibration import resolve_plan
 from src.live.sources import make_source
 
 FEED_SECONDS = 2.0
@@ -154,6 +156,9 @@ class KoraService:
                                  confidence=d["confidence"], analysis_id=aid)
                 if best and best["confidence"] >= 55:
                     n_setups += 1
+                    key = f"{code}:{best['setup']}:{best['direction']}:{round(best['entry'] / (rep['atr'] or 1))}"
+                    if record_plan(self.conn, key, code, best, rep["digits"], aid):
+                        print(f"{code}: logged {best['grade']}-grade plan for forward tracking")
                 if state == "RUNNING" and best:
                     self.maybe_alert(rep, best, settings)
                 self.source.errors.pop(code, None)
@@ -163,6 +168,9 @@ class KoraService:
                 traceback.print_exc()
 
         self.update_correlations(candles)
+        self.resolve_plans(candles)
+        kv_set(self.conn, "sparklines", {c: [round(x["close"], 6) for x in (tfs.get("H1") or [])[-48:]]
+                                         for c, tfs in candles.items()})
         secs = (now() - t0).total_seconds()
         add_decision(self.conn, f"CYCLE — {len(reports)} instruments analysed", "b",
                      f"Full multi-timeframe pass ({', '.join(self.wl['timeframes'])}) in {secs:.1f}s. "
@@ -184,6 +192,24 @@ class KoraService:
             key = f"watch:{rep['code']}:{best['setup']}:{best['direction']}"
             notify.notify_once(self.conn, key, f"KORA · watch · {rep['code']} {best['direction']} "
                                                f"({best['setup_name']}, {best['confidence']}%) — {best['levels_text']}")
+
+    def resolve_plans(self, candles):
+        """Forward-test every open Kora plan against the H1 candles printed since."""
+        for p in open_plans(self.conn):
+            h1 = (candles.get(p["code"]) or {}).get("H1")
+            if not h1:
+                continue
+            res = resolve_plan(h1, p["created_at"], p)
+            if res:
+                status, r = res
+                resolve_plan_row(self.conn, p["id"], status, r)
+                word = {"won": f"hit TP1 for {r:+.2f}R", "lost": "stopped out (-1R)", "not_filled": "limit never filled",
+                        "expired": f"expired after 48 bars at {r:+.2f}R"}[status]
+                add_decision(self.conn, f"RESULT — {p['code']} {p['direction']} {p['setup_name']} {word}",
+                             "g" if status == "won" else "r" if status == "lost" else "b",
+                             f"Plan logged {p['created_at'][:16]} UTC ({p['grade']}-grade, {p['confidence']:.0f}%): entry "
+                             f"{p['entry']:.{p['digits']}f}, SL {p['stop']:.{p['digits']}f}, TP1 {p['tp1']:.{p['digits']}f}. "
+                             f"Outcome: {word}. This feeds Kora's forward track record.", code=p["code"])
 
     def update_correlations(self, candles):
         series = {}

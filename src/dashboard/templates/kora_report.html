@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import track_record %}
 {% block page_title %}{{ meta.code }} — Kora breakdown{% endblock %}
 {% block page_sub %}{{ meta.name }} · {% if rep %}Analysed <span data-localtime="{{ rep._created_at }}" data-fmt="datetime"></span> · execution TF {{ rep.exec_tf }} · analysis only, your decision{% else %}No analysis yet{% endif %}{% endblock %}
 {% block content %}
@@ -25,7 +26,7 @@
   {% if rep.narrative %}
   <div class="panel hero">
     <div class="ph"><span style="width:26px;height:26px;border-radius:999px;background:var(--gradient-brand);display:flex;align-items:center;justify-content:center"><i data-lucide="bot" style="width:14px;height:14px;color:#fff"></i></span><h3 class="h3 lg">Kora's take</h3><span class="r">Written by Claude from this analysis</span></div>
-    <div style="font-size:13px;line-height:1.7;color:rgba(230,237,233,.82);white-space:pre-wrap">{{ rep.narrative }}</div>
+    <div style="font-size:13px;line-height:1.7;color:rgba(235,235,245,.82);white-space:pre-wrap">{{ rep.narrative }}</div>
   </div>
   {% endif %}
 
@@ -56,7 +57,7 @@
         <div><div class="lbl-up">Why</div><ul class="reasons">{% for x in c.confluence %}<li>{{ x }}</li>{% endfor %}</ul></div>
         <div><div class="lbl-up">Against</div>{% if c.against %}<ul class="reasons neg">{% for x in c.against %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<div class="note" style="margin-top:6px">Nothing material flagged.</div>{% endif %}</div>
       </div>
-      <div style="margin-top:12px;display:grid;gap:5px;font-size:12px;line-height:1.55;color:rgba(230,237,233,.72)">
+      <div style="margin-top:12px;display:grid;gap:5px;font-size:12px;line-height:1.55;color:rgba(235,235,245,.72)">
         <div><span class="c-b" style="font-weight:600">Trigger — </span>{{ c.trigger }}</div>
         <div><span class="c-r" style="font-weight:600">Invalidation — </span>{{ c.invalidation }}</div>
         <div><span class="c-a" style="font-weight:600">Track record — </span>{{ c.calibration.note }}</div>
@@ -148,6 +149,7 @@
       </div>
     </div>
   </div>
+  {{ track_record(plans, pstats, D, show_code=False, title='Forward track record · ' ~ meta.code) }}
   <div class="note" style="text-align:center">Kora is an analysis tool, not financial advice. It never places, modifies or closes trades — every decision and execution is yours.</div>
   {% endif %}
 </div>

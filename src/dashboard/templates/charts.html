@@ -3,7 +3,7 @@
 <div class="screen" style="padding-top:16px;gap:12px">
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
     {% for r in rows %}
-    <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="mono" style="font-weight:600;font-size:12px;padding:6px 12px;border-radius:9px;{% if r.code == code %}color:var(--g);background:rgba(147,201,63,.14);border:1px solid rgba(147,201,63,.4){% else %}color:var(--muted);border:1px solid rgba(255,255,255,.08){% endif %}">{{ r.code }}</a>
+    <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="mono" style="font-weight:600;font-size:12px;padding:6px 12px;border-radius:9px;{% if r.code == code %}color:var(--g);background:rgba(155,211,90,.14);border:1px solid rgba(155,211,90,.4){% else %}color:var(--muted);border:1px solid rgba(255,255,255,.08){% endif %}">{{ r.code }}</a>
     {% endfor %}
     <div style="margin-left:auto;display:flex;gap:4px">
       {% for t in ['M1','M5','M15','H1','H4','D1'] %}
@@ -61,7 +61,7 @@
     ohlc.textContent = `O ${K.fm(k.open,d)} · H ${K.fm(k.high,d)} · L ${K.fm(k.low,d)} · C ${K.fm(k.close,d)}`;
   }});
   const styleBtn = (b) => { const on = b.classList.contains('on'), c = K.COLORS[b.dataset.c];
-    b.style.color = on ? c : 'rgba(230,237,233,.55)'; b.style.background = on ? 'rgba(255,255,255,.06)' : 'transparent';
+    b.style.color = on ? c : 'rgba(235,235,245,.55)'; b.style.background = on ? 'rgba(255,255,255,.06)' : 'transparent';
     b.style.border = '1px solid ' + (on ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.08)'); };
   K.$$('#ind-btns button').forEach((b) => { styleBtn(b); b.onclick = () => { b.classList.toggle('on'); chart.ind[b.dataset.ind] = b.classList.contains('on'); styleBtn(b); chart.draw(); }; });
   async function load() {

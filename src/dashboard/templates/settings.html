@@ -97,6 +97,21 @@
     </details>
   </div>
 
+  <div class="panel" id="brief">
+    <div class="ph"><h3 class="h3 lg">Daily brief</h3><span class="r">Account, the board, Kora's plans and today's red-folder news</span></div>
+    <div style="display:flex;align-items:center;gap:13px;padding:4px 4px 10px">
+      <div><div style="font-weight:600;font-size:13.5px">Send scheduled briefs</div><div class="note">Times are your PC's local time. Kora must be running.</div></div>
+      <button class="switch {{ 'on' if settings.brief.enabled }}" id="b-enabled" aria-label="Scheduled briefs"><span></span></button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
+      <div><label class="fl" for="b-times">Send at (comma-separated)</label><input class="field" id="b-times" value="{{ settings.brief.times|join(', ') }}" placeholder="07:00, 13:00"></div>
+      <div style="display:flex;align-items:center;gap:10px;padding-bottom:8px"><button class="switch {{ 'on' if settings.brief.weekdays_only }}" id="b-weekdays" aria-label="Weekdays only"><span></span></button><span class="note" style="color:var(--muted)">Weekdays only</span></div>
+      <div style="display:flex;gap:8px"><button class="btn-pri" id="b-save">Save</button><button class="obtn b" id="b-send">Send a brief now</button></div>
+    </div>
+    <details style="margin-top:14px"><summary style="cursor:pointer;font-weight:500;color:var(--b)">Preview the brief</summary>
+      <pre id="b-preview" style="white-space:pre-wrap;font-family:var(--font-body);font-size:13px;line-height:1.6;color:var(--muted);background:rgba(0,0,0,.2);border-radius:12px;padding:14px;margin-top:10px">Loading…</pre></details>
+  </div>
+
   <div class="panel">
     <div class="ph"><h3 class="h3 lg">Notifications</h3><span class="r">{% if channels %}Delivering via {{ channels|join(' + ') }}{% else %}No channel configured{% endif %}</span></div>
     {% for k, l, d in [('setups','Kora setups','A- and B-grade entry plans at or above your alert threshold'),('watch','Watch-list setups','Setups between 55% and your threshold'),('risk','Risk warnings','Positions without a stop-loss'),('news','High-impact news','15 minutes before red events on your currencies')] %}
@@ -107,7 +122,7 @@
     {% endfor %}
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
       <button class="obtn b" id="n-test">Send test alert</button>
-      {% if not channels %}<span class="note">Set <span class="mono">TELEGRAM_BOT_TOKEN</span> + <span class="mono">TELEGRAM_CHAT_ID</span> (or <span class="mono">KORA_WEBHOOK_URL</span> for Discord/Slack) in .env.</span>{% endif %}
+      {% if not channels %}<span class="note">No channel yet. Free options: Telegram, the ntfy app, email or a Discord webhook. Setup steps are in <span class="mono">docs/alerts_setup.md</span>.</span>{% endif %}
     </div>
   </div>
 </div>
@@ -145,6 +160,16 @@
       user_initial: (K.$('#s-initial').value || 'D').slice(0, 1).toUpperCase() });
     K.toast(r.ok ? 'Settings saved — the Kora service picks them up next cycle' : 'Save failed');
   };
+  K.$('#b-enabled').onclick = (e) => e.currentTarget.classList.toggle('on');
+  K.$('#b-weekdays').onclick = (e) => e.currentTarget.classList.toggle('on');
+  K.$('#b-save').onclick = async () => {
+    const times = K.$('#b-times').value.split(',').map((t) => t.trim()).filter(Boolean);
+    const r = await K.post('/api/settings', { brief: { enabled: K.$('#b-enabled').classList.contains('on'), times, weekdays_only: K.$('#b-weekdays').classList.contains('on') } });
+    K.$('#b-times').value = (r.settings.brief.times || []).join(', ');
+    K.toast(r.settings.brief.times.length ? 'Briefs at ' + r.settings.brief.times.join(', ') : 'No valid times. Use HH:MM, e.g. 07:00');
+  };
+  K.$('#b-send').onclick = async () => { const r = await K.post('/api/brief'); K.toast(r.message); };
+  fetch('/api/brief').then((r) => r.json()).then((r) => { K.$('#b-preview').textContent = r.text; });
   K.$('#n-test').onclick = async () => { const r = await K.post('/api/notify-test'); K.toast(r.message); };
 })();
 </script>

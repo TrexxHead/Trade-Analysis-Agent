@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     "interval_minutes": 15,       # how often Kora re-analyses the watchlist
     "alert_threshold": 65,        # min confidence (%) for a setup to trigger a notification
     "notify": {"setups": True, "watch": False, "news": True, "risk": True},
+    "brief": {"enabled": True, "times": ["07:00", "13:00"], "weekdays_only": False},  # local time on the PC
     "llm_narratives": False,      # write a "Kora's take" paragraph per breakdown via Claude (costs API tokens)
     "watchlist": None,            # list of codes; None = config default_watchlist
     "custom_instruments": [],     # user-added instruments (same fields as the catalog)

@@ -99,3 +99,17 @@ def test_resolve_plan_forward():
     assert resolve_plan(c[:1], t0, plan) is None  # still live
     lim = {**plan, "entry_type": "limit", "entry": 90, "stop": 88}
     assert resolve_plan(bars([100] * 6, start=datetime(2026, 1, 5, 5, tzinfo=timezone.utc)), t0, lim) == ("not_filled", None)
+
+
+def test_brief_schedule_and_text(tmp_path):
+    from src.analyst import briefing
+    from src.store.db import kora_connection, kv_set
+    conn = kora_connection(tmp_path / "t.db")
+    kv_set(conn, "settings", {"brief": {"enabled": True, "times": ["07:00"], "weekdays_only": False}})
+    at = datetime(2026, 11, 27, 7, 10).astimezone()
+    assert briefing.due(conn, at) == "07:00"
+    assert briefing.due(conn, at.replace(hour=8)) is None  # outside the 30-minute window
+    briefing.mark_sent(conn, "07:00", at)
+    assert briefing.due(conn, at) is None  # only once a day
+    text = briefing.build(conn, at)
+    assert text.startswith("KORA · Morning brief") and "THE BOARD" in text and "HIGH-IMPACT NEWS" in text

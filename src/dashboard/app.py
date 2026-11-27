@@ -703,7 +703,12 @@ def api_settings():
     for k, v in body.items():
         if k not in allowed:
             continue
-        if k == "notify" and isinstance(v, dict):
+        if k == "brief" and isinstance(v, dict):
+            import re
+            times = [t.strip() for t in (v.get("times") or []) if re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", t.strip())]
+            cur["brief"] = {"enabled": bool(v.get("enabled", True)), "times": sorted(set(times))[:6],
+                            "weekdays_only": bool(v.get("weekdays_only"))}
+        elif k == "notify" and isinstance(v, dict):
             cur.setdefault("notify", {}).update({kk: bool(vv) for kk, vv in v.items()})
         elif k in ("interval_minutes", "alert_threshold"):
             cur[k] = max(1 if k == "interval_minutes" else 0, min(240 if k == "interval_minutes" else 100, int(v)))
@@ -792,6 +797,19 @@ def api_agent():
         ctl["run_now"] = True
     kv_set(conn, "agent_control", ctl)
     return jsonify({"ok": True, "control": ctl, "service_online": D.feed_status(conn)["online"]})
+
+
+@app.route("/api/brief", methods=["GET", "POST"])
+def api_brief():
+    """GET = preview the brief; POST = send it now to every channel."""
+    from src.analyst import briefing
+    text = briefing.build(_conn())
+    if request.method == "GET":
+        return jsonify({"text": text, "channels": notify.channels()})
+    if not notify.channels():
+        return jsonify({"ok": False, "message": "No channel configured yet - add Telegram, ntfy or email to .env (see Settings)."})
+    ok = notify.send(text, title=text.splitlines()[0])
+    return jsonify({"ok": ok, "message": "Brief sent." if ok else "Send failed - check the dashboard window for the error."})
 
 
 @app.route("/api/notify-test", methods=["POST"])

@@ -1,8 +1,9 @@
-"""Push Kora's findings to you: Telegram and/or any JSON webhook
-(Discord/Slack-compatible). Configure in .env:
+"""Push Kora's findings to you - all free channels, configure any in .env:
 
-    TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...
-    KORA_WEBHOOK_URL=...     (optional, e.g. a Discord channel webhook)
+    TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...      Telegram bot
+    NTFY_TOPIC=...           (NTFY_SERVER=https://ntfy.sh)  ntfy push app, no account
+    SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / BRIEF_EMAIL_TO   email
+    KORA_WEBHOOK_URL=...     Discord / Slack incoming webhook
     DASHBOARD_PUBLIC_URL=... (optional, adds a link to the full breakdown)
 
 Every alert is de-duplicated (same setup on the same instrument at a
@@ -24,6 +25,10 @@ def channels() -> list[str]:
         out.append("telegram")
     if os.environ.get("KORA_WEBHOOK_URL"):
         out.append("webhook")
+    if os.environ.get("NTFY_TOPIC"):
+        out.append("ntfy")
+    if os.environ.get("SMTP_HOST") and os.environ.get("SMTP_USER") and os.environ.get("BRIEF_EMAIL_TO"):
+        out.append("email")
     return out
 
 
@@ -33,15 +38,49 @@ def _post(url: str, payload: dict) -> None:
     urllib.request.urlopen(req, timeout=15).read()
 
 
-def send(text: str) -> bool:
+def _ntfy(text: str, title: str) -> None:
+    server = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").rstrip("/")
+    req = urllib.request.Request(f"{server}/{os.environ['NTFY_TOPIC']}", data=text.encode(),
+                                 headers={"Title": title.replace("·", "-").encode("ascii", "ignore").decode(), "Tags": "chart_with_upwards_trend",
+                                          "User-Agent": "kora-terminal/1.0"})
+    urllib.request.urlopen(req, timeout=15).read()
+
+
+def _email(text: str, title: str) -> None:
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["Subject"], msg["From"], msg["To"] = title, os.environ["SMTP_USER"], os.environ["BRIEF_EMAIL_TO"]
+    msg.set_content(text)
+    port = int(os.environ.get("SMTP_PORT") or 587)
+    with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=20) as s:
+        s.starttls()
+        s.login(os.environ["SMTP_USER"], os.environ.get("SMTP_PASSWORD", ""))
+        s.send_message(msg)
+
+
+def send(text: str, title: str = "Kora") -> bool:
     ok = False
     if "telegram" in channels():
         try:
-            _post(f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-                  {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text, "disable_web_page_preview": True})
+            for i in range(0, len(text), 3900):  # Telegram caps a message at 4096 characters
+                _post(f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+                      {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text[i:i + 3900], "disable_web_page_preview": True})
             ok = True
         except Exception as e:
             print(f"telegram send failed: {e}", file=sys.stderr)
+    if "ntfy" in channels():
+        try:
+            _ntfy(text, title)
+            ok = True
+        except Exception as e:
+            print(f"ntfy send failed: {e}", file=sys.stderr)
+    if "email" in channels():
+        try:
+            _email(text, title)
+            ok = True
+        except Exception as e:
+            print(f"email send failed: {e}", file=sys.stderr)
     if "webhook" in channels():
         try:
             _post(os.environ["KORA_WEBHOOK_URL"], {"text": text, "content": text[:1990]})

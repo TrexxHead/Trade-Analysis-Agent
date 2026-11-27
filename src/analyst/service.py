@@ -274,6 +274,16 @@ class KoraService:
                                    f"(fcst {e['forecast'] or '—'}, prev {e['previous'] or '—'}). "
                                    f"Expect a volatility spike on gold/silver/FX.", within_hours=24)
 
+    def send_brief_if_due(self):
+        from src.analyst import briefing
+        slot = briefing.due(self.conn)
+        if not slot or self.control()["state"] == "STOPPED":
+            return
+        text = briefing.build(self.conn)
+        if notify.channels() and notify.send(text, title=text.splitlines()[0]):
+            print(f"Sent the {slot} brief.")
+        briefing.mark_sent(self.conn, slot)  # mark even with no channel, so it doesn't retry all window
+
     def risk_alerts(self):
         settings = get_settings(self.conn)
         if not settings["notify"].get("risk"):
@@ -376,6 +386,7 @@ class KoraService:
                     if tick % 30 == 0:  # ~every minute
                         self.news_alerts()
                         self.risk_alerts()
+                        self.send_brief_if_due()
                     if tick % 150 == 0 and tick:  # ~every 5 min
                         self.sync_history(days=7)
                     if tick % 900 == 0:  # ~every 30 min

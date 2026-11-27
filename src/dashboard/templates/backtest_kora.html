@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block page_title %}{{ d.code }} backtest · {{ d.tf }}{% endblock %}
+{% block page_sub %}Kora setups replayed on {{ d.candle_range.count }} candles · {{ (d.candle_range.start or '')[:10] }} → {{ (d.candle_range.end or '')[:10] }}{% endblock %}
+{% block content %}
+{% set s = d.stats %}{% set dg = meta.digits or 2 %}
+<div class="screen">
+  <div style="display:flex;gap:8px"><a href="/backtests" class="obtn"><i data-lucide="arrow-left"></i>Backtests</a><a href="/charts?code={{ d.code }}&tf={{ d.tf }}" class="obtn b">Open chart</a></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+    <div class="stat"><div class="lbl-up">Trades</div><div class="v">{{ s.trades }}</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v">{{ D.pct(s.win_rate, 0) if s.win_rate is not none else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Expectancy</div><div class="v c-{{ D.tone(s.expectancy_r) }}">{{ '%+.2fR'|format(s.expectancy_r) if s.expectancy_r is not none else '—' }}</div><div class="s">per trade</div></div>
+    <div class="stat"><div class="lbl-up">Profit factor</div><div class="v">{{ '%.2f'|format(s.profit_factor) if s.profit_factor else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Total</div><div class="v c-{{ D.tone(s.total_r) }}">{{ '%+.1fR'|format(s.total_r) }}</div><div class="s">{{ D.smoney(s.net_usd, 0) }} at {{ D.money(d.risk_usd, 0) }}/trade</div></div>
+    <div class="stat"><div class="lbl-up">Max drawdown</div><div class="v c-r">{{ '%.1fR'|format(s.max_dd_r) }}</div><div class="s">{{ D.smoney(s.max_dd_usd, 0) }}</div></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Equity curve (R)</h3><span class="r">Cumulative R, trade by trade</span></div>
+    {% if curve.line %}
+    <svg viewBox="0 0 600 190" preserveAspectRatio="none" style="width:100%;height:230px;display:block">
+      <defs><linearGradient id="kbt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(90,200,250,.25)"></stop><stop offset="1" stop-color="rgba(90,200,250,0)"></stop></linearGradient></defs>
+      <path d="{{ curve.area }}" fill="url(#kbt)"></path>
+      <path d="{{ curve.line }}" fill="none" stroke="#5ac8fa" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+    </svg>
+    <div class="note" style="display:flex;gap:20px;margin-top:6px"><span>High {{ '%+.1fR'|format(curve.hi) }}</span><span>Low {{ '%+.1fR'|format(curve.lo) }}</span></div>
+    {% else %}<div class="empty">No trades were generated.</div>{% endif %}
+  </div>
+  <div class="panel flush">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">By setup</h3></div>
+    <table class="tbl"><thead><tr><th>Setup</th><th>Trades</th><th>Win rate</th><th>Expectancy</th><th style="text-align:right">Total</th></tr></thead><tbody>
+    {% for b in d.by_setup %}<tr><td style="font-weight:600;color:#fff">{{ b.name }}</td><td>{{ b.n }}</td><td>{{ '%.0f%%'|format(b.win_rate) }}</td>
+      <td class="c-{{ D.tone(b.expectancy) }}">{{ '%+.2fR'|format(b.expectancy) }}</td><td class="c-{{ D.tone(b.total_r) }}" style="text-align:right;font-weight:600">{{ '%+.1fR'|format(b.total_r) }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="panel flush" style="overflow-x:auto">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">Trades</h3></div>
+    <table class="tbl"><thead><tr><th>Signal</th><th>Setup</th><th>Side</th><th>Entry</th><th>Stop</th><th>TP1</th><th>Score</th><th style="text-align:right">Result</th></tr></thead><tbody>
+    {% for t in d.trades|reverse %}<tr><td class="faint" data-localtime="{{ t.time }}" data-fmt="datetime"></td><td>{{ t.setup_name }}</td><td><span class="dir {{ t.direction }}">{{ t.direction|upper }}</span></td>
+      <td class="mono">{{ D.price(t.entry, dg) }} <span class="faint">{{ t.entry_type }}</span></td><td class="mono c-r">{{ D.price(t.stop, dg) }}</td><td class="mono c-g">{{ D.price(t.tp1, dg) }}</td><td>{{ t.score }}</td>
+      <td style="text-align:right;font-weight:600" class="c-{{ D.tone(t.r) }}">{{ '%+.2fR'|format(t.r) }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="note">Historical replay, not a guarantee. A few months of data is a small sample, so judge setups on expectancy and drawdown together.</div>
+</div>
+{% endblock %}

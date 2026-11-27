@@ -150,6 +150,8 @@ code,.code{font-family:var(--font-code)}
 .fchip{font-family:var(--font-body);font-weight:500;font-size:13px;padding:6px 14px;border-radius:999px;cursor:pointer;color:var(--muted);background:rgba(255,255,255,.06);border:none;display:inline-block;transition:background .16s,color .16s}
 .fchip:hover{color:#fff;background:rgba(255,255,255,.1)}
 .fchip.on{color:var(--ink);background:rgba(255,255,255,.92)}
+.seg{display:flex;gap:2px;background:rgba(255,255,255,.06);border-radius:999px;padding:3px;width:fit-content}
+.seg .fchip{background:none}.seg .fchip.on{background:rgba(255,255,255,.92);color:var(--ink)}
 .obtn{font-family:var(--font-body);font-weight:500;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer;color:var(--text);border:1px solid var(--line2);background:rgba(255,255,255,.04);transition:background .16s var(--ease-standard);display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
 .obtn:hover{background:rgba(255,255,255,.09);color:#fff}
 .obtn.b{color:var(--b);border-color:rgba(90,200,250,.32)}.obtn.b:hover{background:rgba(90,200,250,.1)}

@@ -1,12 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="screen" style="gap:14px">
-  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-    {% for k, l in [('all','All'),('wins','Wins'),('losses','Losses'),('flagged','Flagged')] %}
-    <a href="/journal?f={{ k }}" class="fchip {{ 'on' if f == k }}">{{ l }}</a>
+  <form method="get" id="jf" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="f" value="{{ f }}">
+    {% for k, l in [('all','All'),('wins','Wins'),('losses','Losses'),('flagged','Flagged'),('unreviewed','Needs review')] %}
+    <button type="submit" value="{{ k }}" onclick="this.form.elements.f.value=this.value" class="fchip {{ 'on' if f == k }}">{{ l }}</button>
     {% endfor %}
-    <span class="note" style="margin-left:auto">Auto-journaled at trade close · Kora's note compares each entry with its analysis at the time · click a card to tag &amp; review</span>
+    <select class="field" name="sym" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()"><option value="">All symbols</option>{% for s in symbols %}<option {{ 'selected' if args.sym == s }}>{{ s }}</option>{% endfor %}</select>
+    <select class="field" name="setup" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()"><option value="">All setups</option>{% for s in setups %}<option {{ 'selected' if args.setup == s }}>{{ s }}</option>{% endfor %}</select>
+    <select class="field" name="align" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()">
+      <option value="">Any Kora alignment</option>{% for k, l in [('aligned','Aligned with Kora'),('against','Against Kora'),('discretionary','Discretionary')] %}<option value="{{ k }}" {{ 'selected' if args.align == k }}>{{ l }}</option>{% endfor %}</select>
+    <input class="field" type="date" name="start" value="{{ args.start }}" style="width:auto;padding:5px 10px;font-size:13px" onchange="this.form.submit()" aria-label="From">
+    <input class="field" type="date" name="end" value="{{ args.end }}" style="width:auto;padding:5px 10px;font-size:13px" onchange="this.form.submit()" aria-label="To">
+    <input class="field" name="q" value="{{ args.q }}" placeholder="Search notes…" style="width:170px;padding:6px 10px;font-size:13px">
+    <a href="/journal" class="note" style="color:var(--b)">Reset</a>
+    <a href="/pnl-calendar" class="obtn" style="margin-left:auto"><i data-lucide="calendar-days"></i>P&amp;L calendar</a>
+  </form>
+  {% if summary %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    <div class="stat"><div class="lbl-up">Trades</div><div class="v" style="font-size:21px">{{ n_match }}</div><div class="s">{{ summary.wins }} won · {{ summary.losses }} lost</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v" style="font-size:21px">{{ D.pct(summary.win_rate, 0) }}</div></div>
+    <div class="stat"><div class="lbl-up">Net P/L</div><div class="v c-{{ D.tone(summary.net) }}" style="font-size:21px">{{ D.smoney(summary.net) }}</div></div>
+    <div class="stat"><div class="lbl-up">Profit factor</div><div class="v" style="font-size:21px">{{ '%.2f'|format(summary.pf) if summary.pf else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Avg win / loss</div><div class="v" style="font-size:17px"><span class="c-g">{{ D.smoney(summary.avg_win, 0) }}</span> <span class="faint">/</span> <span class="c-r">{{ D.smoney(summary.avg_loss, 0) }}</span></div></div>
+    <div class="stat"><div class="lbl-up">Expectancy</div><div class="v c-{{ D.tone(summary.expectancy_r if summary.expectancy_r is not none else summary.expectancy_usd) }}" style="font-size:21px">{% if summary.expectancy_r is not none %}{{ '%+.2fR'|format(summary.expectancy_r) }}{% else %}{{ D.smoney(summary.expectancy_usd) }}{% endif %}</div><div class="s">per trade</div></div>
   </div>
+  {% endif %}
+  <div class="note">{% if n_match > entries|length %}Showing the latest {{ entries|length }} of {{ n_match }} matching trades. {% endif %}Trades sync automatically from your MT5 terminal. Kora's note compares each entry with its analysis at the time. Click a card to tag and review it.</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
     {% for j in entries %}
     <a href="/trades/{{ j.id }}" class="panel" style="display:flex;flex-direction:column;gap:10px;color:inherit">

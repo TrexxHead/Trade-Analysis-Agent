@@ -58,10 +58,15 @@ def simulate(candles: list[dict], i: int, plan: dict) -> float | None:
     return sign * (candles[end - 1]["close"] - entry) / risk
 
 
-def train_instrument(h1: list[dict], meta: dict, step: int = 1) -> list[dict]:
-    """Returns stats rows [{setup, direction, n, wins, avg_r, expectancy}]."""
+def replay(candles: list[dict], meta: dict, htf_hours: int = 4, setups: set | None = None,
+           step: int = 1) -> list[dict]:
+    """Bar-by-bar replay of the setup detectors with no lookahead; returns every
+    simulated trade (the raw material for both calibration and backtests).
+    `candles` is the execution timeframe; the higher timeframe is resampled
+    from it (`htf_hours` per HTF bar, e.g. 4 for H1 -> H4)."""
+    h1 = candles
     f = Features(h1)
-    h4 = ta.resample(h1, 4)
+    h4 = ta.resample(h1, htf_hours) if htf_hours > 0 else h1
     f4 = Features(h4)
     # map each H1 bar to the last H4 bar that had fully closed by then
     h4_index, k = [], -1
@@ -70,7 +75,7 @@ def train_instrument(h1: list[dict], meta: dict, step: int = 1) -> list[dict]:
             k += 1
         h4_index.append(k - 1)  # k is the H4 bar still forming; k-1 is the last closed one
 
-    outcomes: dict[tuple, list[float]] = {}
+    trades: list[dict] = []
     last_signal: dict[tuple, int] = {}
     for i in range(210, len(h1) - 2, step):
         hk = h4_index[i]
@@ -78,14 +83,26 @@ def train_instrument(h1: list[dict], meta: dict, step: int = 1) -> list[dict]:
             continue
         htf = read_at(f4, hk, "H4")
         for cand in detect_all(f, i, htf, meta):
+            if setups and cand["setup"] not in setups:
+                continue
             key = (cand["setup"], cand["direction"])
             if i - last_signal.get(key, -999) < 6:  # one signal per setup per 6 bars - avoid counting the same move repeatedly
                 continue
             last_signal[key] = i
             r = simulate(h1, i, cand)
             if r is not None:
-                outcomes.setdefault(key, []).append(r)
+                trades.append({"time": h1[i]["time"], "setup": cand["setup"], "setup_name": cand["setup_name"],
+                               "direction": cand["direction"], "entry_type": cand["entry_type"], "entry": cand["entry"],
+                               "stop": cand["stop"], "tp1": cand["tp1"], "rr1": cand["rr1"], "score": cand["score"],
+                               "r": round(r, 3)})
+    return trades
 
+
+def train_instrument(h1: list[dict], meta: dict, step: int = 1) -> list[dict]:
+    """Returns stats rows [{setup, direction, n, wins, avg_r, expectancy}]."""
+    outcomes: dict[tuple, list[float]] = {}
+    for t in replay(h1, meta, step=step):
+        outcomes.setdefault((t["setup"], t["direction"]), []).append(t["r"])
     rows = []
     for (setup, direction), rs in outcomes.items():
         wins = sum(1 for r in rs if r > 0)

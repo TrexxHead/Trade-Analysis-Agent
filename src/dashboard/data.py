@@ -346,6 +346,8 @@ def instrument_rows(conn) -> list[dict]:
     reps = latest_analyses(conn)
     quotes = get_quotes(conn)
     settings = get_settings(conn)
+    from src.analyst.config import watchlist_codes
+    watched = watchlist_codes(settings)
     rows = []
     for m in instruments():
         rep = reps.get(m["code"])
@@ -362,7 +364,7 @@ def instrument_rows(conn) -> list[dict]:
             "atr": (rep or {}).get("atr"), "vol": (rep or {}).get("atr_pct"),
             "trend": min(100, (rep or {}).get("adx") or 0) if rep else None,
             "score": (rep or {}).get("opportunity"), "best": best,
-            "disabled": m["code"] in settings.get("disabled", []),
+            "disabled": m["code"] not in watched, "watched": m["code"] in watched,
         })
     return rows
 

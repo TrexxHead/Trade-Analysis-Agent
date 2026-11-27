@@ -15,6 +15,14 @@
     <div class="stat"><div class="lbl-up">Win rate</div><div class="v">{{ D.pct(q.win_rate, 0) if q.win_rate is defined else '—' }}</div><div class="s">{{ q.trades or 0 }} trades · PF {{ '%.2f'|format(q.pf) if q.pf else '—' }}</div></div>
   </div>
 
+  {% set a = acct.account %}
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:-6px" class="note">
+    {% if a.login %}<span class="dot {{ 'bg-g pulse' if feed.online else 'bg-m' }}"></span><span style="color:var(--text);font-weight:500">{{ a.broker or 'MT5' }} · {{ a.login }}</span>
+    {% if a.type %}<span class="tint {{ 'a' if a.type == 'REAL' else 'b' }}">{{ a.type|title }}</span>{% endif %}<span>{{ a.server }}{% if a.leverage %} · 1:{{ a.leverage }}{% endif %}</span>
+    {% else %}<span>Showing {{ 'closed-trade history only' if n_trades else 'no account yet' }} — open your MT5 terminal and start Kora to mirror the account live.</span>{% endif %}
+    <span style="margin-left:auto;display:flex;gap:8px"><a class="obtn" href="/positions?tab=history">History</a><a class="obtn" href="/backtests">Backtest</a><a class="obtn" href="/analytics">Analytics</a></span>
+  </div>
+
   <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(300px,1fr);align-items:start">
     <div class="panel" style="padding:18px 20px">
       {% set eq = D.svg_path(curve) %}
@@ -138,6 +146,18 @@
         <div class="tile"><div class="v c-{{ risk.label_tone }}">{{ risk.score }}</div><div class="l">Risk score</div></div>
       </div>
     </div>
+  </div>
+  <div class="panel flush">
+    <div style="padding:18px 22px 6px;display:flex;align-items:center;gap:10px"><h3 class="h3 lg">Recent trades</h3><span class="note">From your MT5 history</span>
+      <a href="/positions?tab=history" style="margin-left:auto;font-weight:500;font-size:13px">Full history →</a></div>
+    {% if recent %}
+    <table class="tbl"><thead><tr><th>Closed</th><th>Symbol</th><th>Side</th><th>Volume</th><th>Entry → exit</th><th>Setup</th><th style="text-align:right">P/L</th></tr></thead><tbody>
+    {% for t in recent %}<tr style="cursor:pointer" onclick="location.href='/trades/{{ t.id }}'"><td class="faint" data-localtime="{{ t.close_time }}" data-fmt="datetime"></td>
+      <td style="font-weight:600;color:#fff">{{ t.code }}</td><td><span class="dir {{ t.direction }}">{{ t.direction|upper }}</span></td><td>{{ t.volume }}</td>
+      <td class="muted">{{ '%.5g'|format(t.open_price) if t.open_price is not none else '—' }} → {{ '%.5g'|format(t.close_price) if t.close_price is not none else '—' }}</td>
+      <td class="muted">{{ t.setup or '—' }}</td><td class="c-{{ D.tone(t.pnl) }}" style="text-align:right;font-weight:600">{{ D.smoney(t.pnl) }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<div class="empty">No closed trades yet. Kora syncs your MT5 history automatically once it's connected.</div>{% endif %}
   </div>
 </div>
 {% endblock %}

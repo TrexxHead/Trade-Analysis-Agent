@@ -282,9 +282,54 @@ class KoraService:
                 print(f"trade snapshot failed for {t['id']}: {e}", file=sys.stderr)
 
     # ------------------------------------------------------------------ main
+    def purge_simulation(self):
+        """Running on real data after a simulated session: drop everything the
+        simulator wrote so no fake equity, plans or prices linger in the hub."""
+        hb = kv_get(self.conn, "heartbeat") or {}
+        trained_on = kv_get(self.conn, "trained_source")
+        if self.source.name == "sim":
+            return
+        if hb.get("source") == "sim" or kv_get(self.conn, "account", {}).get("type") == "SIMULATED":
+            for key in ("equity_history", "equity_peak", "equity_sod", "account", "positions", "sparklines",
+                        "correlations", "last_cycle"):
+                self.conn.execute("DELETE FROM kv WHERE key = ?", (key,))
+            for table in ("analyses", "decisions", "quotes", "kora_plans", "alerts_sent"):
+                try:
+                    self.conn.execute(f"DELETE FROM {table}")
+                except Exception:
+                    pass
+            self.conn.execute("DELETE FROM trades WHERE id LIKE 'sim:%'")
+            self.conn.commit()
+            print("Cleared data left over from simulation mode.")
+        if trained_on == "sim":
+            self.conn.execute("DELETE FROM setup_stats")
+            self.conn.commit()
+            print("Calibration was trained on simulated data - cleared. Run scripts/train_kora.py on real history.")
+
+    def sync_history(self, days: int = 30):
+        """Mirror closed trades from the MT5 terminal into the trades table."""
+        if self.source.name != "mt5":
+            return
+        try:
+            from src.ingest import mt5_local
+            from src.store.db import upsert_trades
+            trades = mt5_local.fetch_trades(now() - timedelta(days=days), now() + timedelta(days=1))
+            if trades:
+                upsert_trades(self.conn, trades)
+            kv_set(self.conn, "history_sync", {"at": now().isoformat(), "trades": len(trades), "days": days})
+        except Exception as e:
+            print(f"history sync failed: {e}", file=sys.stderr)
+
     async def run(self):
-        print(f"Kora starting ({self.source.name}) - analysis only, never places orders.")
+        from src.live.sources import resolve_source_name
+        print(f"Kora starting - data source: {self.source.name} (KORA_DATA_SOURCE={os.environ.get('KORA_DATA_SOURCE') or 'auto'}). "
+              "Analysis only, never places orders.")
+        if self.source.name == "deriv":
+            print("  Using Deriv's free public feed: prices and candles only, no account data. Open your MT5 "
+                  "terminal and restart Kora to mirror your account (run scripts/doctor.py if MT5 is open).")
         await self.source.start()
+        self.purge_simulation()
+        self.sync_history(days=365)
         if not kv_get(self.conn, "agent_control"):
             kv_set(self.conn, "agent_control", {"state": "RUNNING", "run_now": False})
         add_decision(self.conn, f"START — Kora service online ({self.source.name})", "b",
@@ -306,6 +351,8 @@ class KoraService:
                     if tick % 30 == 0:  # ~every minute
                         self.news_alerts()
                         self.risk_alerts()
+                    if tick % 150 == 0 and tick:  # ~every 5 min
+                        self.sync_history(days=7)
                     if tick % 900 == 0:  # ~every 30 min
                         await self.snapshot_trades()
                 except Exception:

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 BASE_PRICES = {
     "STEP": (9234.5, 0.0009), "V10": (6450.0, 0.0011), "V25": (2145.32, 0.0028), "V75": (98432.11, 0.0085),
     "V100": (1624.08, 0.011), "BOOM500": (7821.4, 0.0016), "CRASH500": (5213.9, 0.0016),
+    "BOOM1000": (14250.5, 0.0012), "CRASH1000": (6421.3, 0.0012),
     "XAUUSD": (3342.5, 0.0032), "XAGUSD": (38.42, 0.0045), "EURUSD": (1.0862, 0.0011), "GBPUSD": (1.2718, 0.0013),
 }
 TF_MINUTES = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240, "D1": 1440}
@@ -35,9 +36,9 @@ def gen_candles(code: str, tf: str, count: int, end: datetime | None = None, see
             drift = rnd.gauss(0, vol * 0.35)
         o = p
         c = o * (1 + drift + rnd.gauss(0, vol))
-        if code == "BOOM500" and rnd.random() < 0.01:
+        if code.startswith("BOOM") and rnd.random() < 0.01:
             c = o * (1 + vol * 8)
-        if code == "CRASH500" and rnd.random() < 0.01:
+        if code.startswith("CRASH") and rnd.random() < 0.01:
             c = o * (1 - vol * 8)
         hw, lw, v = abs(rnd.gauss(0, vol * 0.5)), abs(rnd.gauss(0, vol * 0.5)), rnd.randint(50, 500)
         if k >= first:

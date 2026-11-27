@@ -72,6 +72,8 @@ def main():
                 summary.append(f"{m['code']} best: {best['setup']} {best['direction']} ({best['expectancy']:+.2f}R, n={best['n']})")
         except Exception as e:
             print(f"  {m['code']} failed: {e}", file=sys.stderr)
+    from src.store.db import kv_set
+    kv_set(conn, "trained_source", resolve_source_name())
     add_decision(conn, f"TRAIN — calibrated {len(todo)} instrument(s) on {args.days}d of H1", "b",
                  "Replayed every setup detector bar-by-bar with no lookahead and recorded TP1/stop outcomes. "
                  + ("; ".join(summary) if summary else "No instrument had enough history."))

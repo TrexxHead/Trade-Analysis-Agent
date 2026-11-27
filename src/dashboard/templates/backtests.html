@@ -1,32 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="screen legacy">
+<div class="screen">
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Run a backtest</h3><span class="r">Replays Kora's setups bar by bar on real history from your data source, with no lookahead</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;align-items:end">
+      <div><label class="fl" for="bt-code">Instrument</label>
+        <select class="field" id="bt-code">{% for m in catalog %}<option value="{{ m.code }}" {{ 'selected' if m.code == (watched[0] if watched else 'XAUUSD') }}>{{ m.code }} · {{ m.name }}</option>{% endfor %}</select></div>
+      <div><label class="fl" for="bt-tf">Timeframe</label>
+        <select class="field" id="bt-tf">{% for t in ['M15','M30','H1','H4','D1'] %}<option {{ 'selected' if t == 'H1' }}>{{ t }}</option>{% endfor %}</select></div>
+      <div><label class="fl" for="bt-days">History (days)</label><input class="field" id="bt-days" type="number" min="10" max="1500" value="180"></div>
+      <div><label class="fl" for="bt-risk">Risk per trade ($)</label><input class="field" id="bt-risk" type="number" min="1" value="100"></div>
+      <div><button class="btn-pri" id="bt-run" style="width:100%">Run backtest</button></div>
+    </div>
+    <label class="fl">Setups to include</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="bt-setups">
+      {% for k, n in setup_names.items() %}<button class="fchip on" data-setup="{{ k }}">{{ n }}</button>{% endfor %}
+    </div>
+    <div class="note" style="margin-top:12px" id="bt-msg">Stops count before targets when a bar hits both, and limit orders must actually fill. Lower timeframes on Deriv's feed are capped at 5,000 candles.</div>
+  </div>
 
-<div class="card">
-{% if runs %}
-<table>
-  <thead>
-    <tr><th>Symbol</th><th>Range</th><th>Trades</th><th>Win rate</th><th>Profit factor</th><th>Result</th><th></th></tr>
-  </thead>
-  <tbody>
-    {% for r in runs %}
-    <tr>
-      <td>{{ r.symbol }}</td>
-      <td>{{ r.range.start[:10] if r.range.start else '—' }} &rarr; {{ r.range.end[:10] if r.range.end else '—' }}</td>
-      <td>{{ r.stats.total_trades }}</td>
-      <td>{{ '%.1f%%' % (r.stats.win_rate * 100) if r.stats.win_rate is not none else '—' }}</td>
-      <td>{{ '%.2f' % r.stats.profit_factor if r.stats.profit_factor is not none else '—' }}</td>
-      <td class="{{ 'pos' if r.ending_balance >= r.starting_balance else 'neg' }}">
-        {{ '%+.2f' % (r.ending_balance - r.starting_balance) }}
-      </td>
-      <td><a href="/backtests/{{ r.filename }}" class="pill muted">view</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty">No backtests run yet. Try <code>scripts/run_backtest.py</code>.</div>
-{% endif %}
+  <div class="panel flush">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">Saved runs</h3></div>
+    {% if runs %}
+    <table class="tbl">
+      <thead><tr><th>Run</th><th>Instrument</th><th>Range</th><th>Trades</th><th>Win rate</th><th>Expectancy</th><th style="text-align:right">Result</th></tr></thead>
+      <tbody>
+      {% for r in runs %}{% set s = r.stats %}
+      <tr style="cursor:pointer" onclick="location.href='/backtests/{{ r.filename }}'">
+        <td>{% if r.kind == 'kora' %}<span class="tint b">Kora setups</span> <span class="faint">{{ r.tf }} · {{ r.days }}d</span>{% else %}<span class="tint m">CSV strategy</span>{% endif %}</td>
+        <td style="font-weight:600;color:#fff">{{ r.symbol }}</td>
+        <td class="faint">{{ (r.range.start or '')[:10] }} → {{ (r.range.end or '')[:10] }}</td>
+        <td>{{ s.trades if s.trades is defined else s.total_trades }}</td>
+        <td>{% set wr = s.win_rate %}{% if wr is not none and wr is defined %}{{ '%.0f%%'|format(wr if wr > 1 else wr * 100) }}{% else %}—{% endif %}</td>
+        <td>{% if s.expectancy_r is defined and s.expectancy_r is not none %}<span class="c-{{ D.tone(s.expectancy_r) }}">{{ '%+.2fR'|format(s.expectancy_r) }}</span>{% else %}—{% endif %}</td>
+        <td style="text-align:right;font-weight:600">{% if r.kind == 'kora' %}<span class="c-{{ D.tone(s.total_r) }}">{{ '%+.1fR'|format(s.total_r) }}</span>{% elif r.ending_balance is not none and r.starting_balance %}<span class="c-{{ D.tone(r.ending_balance - r.starting_balance) }}">{{ D.smoney(r.ending_balance - r.starting_balance) }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No backtests yet. Run one above.</div>{% endif %}
+  </div>
 </div>
-</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$$('#bt-setups .fchip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  K.$('#bt-run').onclick = async () => {
+    const btn = K.$('#bt-run'), msg = K.$('#bt-msg');
+    const setups = K.$$('#bt-setups .fchip.on').map((b) => b.dataset.setup);
+    if (!setups.length) return K.toast('Pick at least one setup');
+    btn.disabled = true; btn.textContent = 'Running…'; msg.textContent = 'Fetching history and replaying setups. This can take up to a minute.';
+    try {
+      const r = await K.post('/api/backtest', { code: K.$('#bt-code').value, tf: K.$('#bt-tf').value, days: K.$('#bt-days').value, risk_usd: K.$('#bt-risk').value, setups });
+      if (r.ok) location.href = '/backtests/' + r.file; else { msg.textContent = r.message; K.toast('Backtest failed'); }
+    } catch (e) { msg.textContent = 'The backtest request failed. Check that the dashboard is running.'; }
+    btn.disabled = false; btn.textContent = 'Run backtest';
+  };
+})();
+</script>
 {% endblock %}

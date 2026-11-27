@@ -56,6 +56,32 @@ python scripts/run_dashboard.py        # http://127.0.0.1:5000
 python scripts/run_ingest.py --source mt5 --days-back 90   # your closed trades for Journal/Analytics
 ```
 
+### Not seeing real data?
+
+Run `python scripts/doctor.py`. It checks the MT5 package, the terminal
+connection, each watchlist symbol and Deriv's feed, then tells you which
+source Kora will use. The usual causes:
+- an old simulated Kora window still running (close every terminal window,
+  then start Kora again);
+- `KORA_DATA_SOURCE=sim` left in `.env`;
+- the MT5 app closed or logged out.
+
+When Kora starts on real data after a simulated session, it automatically
+clears the simulated leftovers.
+
+### Watchlist, charts and backtests
+
+- **Watchlist:** Settings → Watchlist, or the ★ on any Scanner row. Add any
+  other MT5 symbol there too. Kora analyses only what you watch.
+- **Charts:** SMA/EMA/Bollinger/VWAP/Donchian on price, and RSI/MACD/ATR/
+  Stochastic/Volume panes. Save indicator sets as named templates (one can
+  be the default). Your MT5 trades and Kora's plan are drawn on the chart.
+- **Backtests:** Analytics → Backtests → *Run a backtest* replays Kora's
+  setups on real history for any instrument, timeframe and period.
+- **Account mirror:** with MT5 connected, Kora syncs your closed trades every
+  5 minutes, so the Dashboard, Positions → History, Journal and Analytics
+  reflect your live account.
+
 ### Quick start
 
 ```bash

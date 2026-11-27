@@ -47,11 +47,34 @@
       <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">Kora's take (Claude narratives)</div><div class="note">A written paragraph per breakdown, regenerated when the best setup changes. Uses Anthropic API tokens.{% if not llm_ok %} Needs ANTHROPIC_API_KEY.{% endif %}</div></div>
       <button class="switch {{ 'on' if settings.llm_narratives }}" data-setting="llm_narratives"><span></span></button>
     </div>
-    <label class="fl" style="margin-top:16px">Instruments analysed</label>
-    <div style="display:flex;flex-wrap:wrap;gap:6px" id="s-instr">
-      {% for m in instruments %}<button class="fchip {{ '' if m.code in settings.disabled else 'on' }}" data-code="{{ m.code }}">{{ m.code }}</button>{% endfor %}
-    </div>
     <div style="margin-top:14px;display:flex;gap:8px"><button class="btn-pri" id="s-save">Save</button></div>
+  </div>
+
+  <div class="panel" id="watchlist">
+    <div class="ph"><h3 class="h3 lg">Watchlist</h3><span class="r">Kora analyses only what's switched on · {{ watched|length }} watching</span></div>
+    {% for kind in ['Metals', 'Synthetics', 'Forex', 'Custom'] %}{% set group = instruments|selectattr('kind', 'equalto', kind)|list %}
+    {% if group %}
+    <div class="lbl-up" style="margin:14px 0 4px">{{ kind }}</div>
+    {% for m in group %}
+    <div style="display:flex;align-items:center;gap:13px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.04)">
+      <div style="min-width:0"><div style="font-weight:600;font-size:13.5px">{{ m.code }} <span class="faint" style="font-weight:400">· {{ m.name }}</span></div>
+        <div class="note">MT5 <span class="mono" style="color:var(--muted)">{{ m.symbol }}</span>{% if m.deriv_symbol %} · Deriv <span class="mono" style="color:var(--muted)">{{ m.deriv_symbol }}</span>{% endif %}</div></div>
+      {% if m.custom %}<button class="obtn r" style="margin-left:auto;padding:4px 11px" data-delcustom="{{ m.code }}">Delete</button>{% endif %}
+      <button class="switch {{ 'on' if m.code in watched }}" style="{{ '' if m.custom else 'margin-left:auto' }}" data-watch="{{ m.code }}" aria-label="Watch {{ m.code }}"><span></span></button>
+    </div>
+    {% endfor %}{% endif %}{% endfor %}
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:500;color:var(--b)">Add another MT5 symbol</summary>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:8px">
+        <div><label class="fl" for="c-code">Short code</label><input class="field" id="c-code" placeholder="e.g. US30"></div>
+        <div><label class="fl" for="c-symbol">Exact MT5 symbol</label><input class="field" id="c-symbol" placeholder="as shown in Market Watch"></div>
+        <div><label class="fl" for="c-name">Display name</label><input class="field" id="c-name" placeholder="Wall Street 30"></div>
+        <div><label class="fl" for="c-digits">Price digits</label><input class="field" id="c-digits" type="number" min="0" max="6" value="2"></div>
+        <div><label class="fl" for="c-deriv">Deriv API symbol (optional)</label><input class="field" id="c-deriv" placeholder="e.g. R_50"></div>
+        <div><label class="fl" for="c-ccy">News currencies (optional)</label><input class="field" id="c-ccy" placeholder="USD, EUR"></div>
+      </div>
+      <button class="btn-pri" style="margin-top:14px" id="c-add">Add to watchlist</button>
+    </details>
   </div>
 
   <div class="panel">
@@ -79,11 +102,20 @@
   K.$$('[data-setting]').forEach((b) => b.onclick = async () => {
     b.classList.toggle('on'); await K.post('/api/settings', { [b.dataset.setting]: b.classList.contains('on') }); K.toast('Saved');
   });
-  K.$$('#s-instr .fchip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  K.$$('[data-watch]').forEach((b) => b.onclick = async () => {
+    const on = !b.classList.contains('on'); b.classList.toggle('on', on);
+    await K.post('/api/watchlist', { action: on ? 'add' : 'remove', code: b.dataset.watch });
+    K.toast((on ? 'Watching ' : 'Removed ') + b.dataset.watch + ' — Kora picks it up next cycle');
+  });
+  K.$$('[data-delcustom]').forEach((b) => b.onclick = async () => { await K.post('/api/watchlist', { action: 'delete_custom', code: b.dataset.delcustom }); location.reload(); });
+  K.$('#c-add').onclick = async () => {
+    const v = (id) => K.$(id).value;
+    const r = await K.post('/api/watchlist', { action: 'add_custom', code: v('#c-code'), symbol: v('#c-symbol'), name: v('#c-name'), digits: v('#c-digits'), deriv_symbol: v('#c-deriv'), currencies: v('#c-ccy') });
+    if (r.ok) location.reload(); else K.toast(r.message || 'Could not add that symbol');
+  };
   K.$('#s-save').onclick = async () => {
-    const disabled = K.$$('#s-instr .fchip').filter((b) => !b.classList.contains('on')).map((b) => b.dataset.code);
     const r = await K.post('/api/settings', { interval_minutes: K.$('#s-interval').value, alert_threshold: K.$('#s-threshold').value,
-      user_initial: (K.$('#s-initial').value || 'D').slice(0, 1).toUpperCase(), disabled });
+      user_initial: (K.$('#s-initial').value || 'D').slice(0, 1).toUpperCase() });
     K.toast(r.ok ? 'Settings saved — the Kora service picks them up next cycle' : 'Save failed');
   };
   K.$('#n-test').onclick = async () => { const r = await K.post('/api/notify-test'); K.toast(r.message); };

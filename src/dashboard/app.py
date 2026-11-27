@@ -53,7 +53,7 @@ PAGES = {
 }
 SUBPAGES = {
     "trades": ("Trades", "Full trade history"), "mistakes": ("Mistakes", "Rule violations"),
-    "backtests": ("Backtests", "Saved backtest runs"), "pnl": ("P&L Calendar", "Daily P&L heatmap"),
+    "backtests": ("Backtests", "Replay Kora's setups on real history"), "pnl": ("P&L Calendar", "Daily P&L heatmap"),
     "report": ("Kora breakdown", "Full multi-timeframe analysis"),
 }
 
@@ -122,7 +122,9 @@ def dashboard():
     board = sorted(((r, r["candidates"][0]) for r in reps.values() if r.get("candidates")),
                    key=lambda rc: -rc[1]["confidence"])[:5]
     sparks = kv_get(conn, "sparklines", {}) or {}
-    return render_template("dashboard.html", active="dashboard", acct=acct, q=q, curve=curve, board=board,
+    s2c = D.symbol_to_code()
+    recent = [{**t, "code": s2c.get(t["symbol"], t["symbol"])} for t in list(reversed(trades))[:8]]
+    return render_template("dashboard.html", active="dashboard", acct=acct, q=q, curve=curve, board=board, recent=recent,
                            sparks=sparks, rows=D.instrument_rows(conn), pstats=D.plan_stats(list_plans(conn)),
                            curve_label=curve_label, top=top, reps=reps, positions=positions, risk=risk,
                            sessions=sessions(), decisions=list_decisions(conn, 1), n_trades=len(trades))
@@ -179,8 +181,31 @@ def positions():
     pos = D.enrich_positions(conn, acct["positions"], acct["equity"])
     risk = D.risk_model(conn, acct, pos)
     s2c = D.symbol_to_code()
-    closed = [{**t, "code": s2c.get(t["symbol"], t["symbol"])} for t in list(reversed(trades))[:12]]
-    return render_template("positions.html", active="positions", acct=acct, pos=pos, risk=risk, closed=closed)
+    tab = request.args.get("tab", "open")
+    hsym, hdays = request.args.get("sym", ""), request.args.get("days", 30, type=int)
+    since = (datetime.now(timezone.utc) - timedelta(days=hdays)).isoformat() if hdays else ""
+    hist = [{**t, "code": s2c.get(t["symbol"], t["symbol"]),
+             "dur": D.duration(t["open_time"], D.parse_dt(t["close_time"]))}
+            for t in reversed(trades) if (not hsym or t["symbol"] == hsym) and t["close_time"] >= since]
+    by_sym: dict = {}
+    for t in trades:
+        b = by_sym.setdefault(t["symbol"], {"symbol": t["symbol"], "code": s2c.get(t["symbol"], t["symbol"]), "trades": [], "open": 0, "open_pl": 0.0})
+        b["trades"].append(t)
+    for p in pos:
+        b = by_sym.setdefault(p["symbol"], {"symbol": p["symbol"], "code": p["code"], "trades": [], "open": 0, "open_pl": 0.0})
+        b["open"] += 1
+        b["open_pl"] += p["pnl"]
+    sym_rows = []
+    for b in by_sym.values():
+        st = D.quant_stats(b.pop("trades"), None) if b.get("trades") is not None else {}
+        sym_rows.append({**b, **{k: st.get(k) for k in ("trades", "win_rate", "net", "pf", "avg_win", "avg_loss")}})
+    sym_rows.sort(key=lambda r: -((r["net"] or 0) + r["open_pl"]))
+    a = acct["account"]
+    margin_level = (acct["equity"] / acct["margin"] * 100) if acct.get("margin") and acct.get("equity") else None
+    return render_template("positions.html", active="positions", acct=acct, pos=pos, risk=risk, tab=tab, hist=hist[:300],
+                           hist_stats=D.quant_stats(list(reversed(hist)), None) if hist else {}, hsym=hsym, hdays=hdays,
+                           symbols=sorted({t["symbol"] for t in trades}), sym_rows=sym_rows, margin_level=margin_level,
+                           sync=kv_get(conn, "history_sync"), a=a)
 
 
 @app.route("/risk")
@@ -213,7 +238,12 @@ def analytics():
 def journal():
     conn = _conn()
     flt = request.args.get("f", "all")
-    trades = list(reversed(get_trades(conn)))
+    fsym, fsetup, falign = request.args.get("sym", ""), request.args.get("setup", ""), request.args.get("align", "")
+    fq, fstart, fend = request.args.get("q", "").strip().lower(), request.args.get("start", ""), request.args.get("end", "")
+    all_trades = list(reversed(get_trades(conn)))
+    trades = [t for t in all_trades if (not fsym or t["symbol"] == fsym) and (not fsetup or (t.get("setup") or "Untagged") == fsetup)
+              and (not fstart or t["close_time"][:10] >= fstart) and (not fend or t["close_time"][:10] <= fend)
+              and (not fq or fq in ((t.get("notes") or "") + " " + (t.get("setup") or "") + " " + t["symbol"]).lower())]
     flags = defaultdict(list)
     for f in get_flags(conn):
         flags[f["trade_id"]].append(f)
@@ -224,10 +254,10 @@ def journal():
         fl = flags.get(t["id"], [])
         if flt == "wins" and t["pnl"] <= 0 or flt == "losses" and t["pnl"] >= 0 or flt == "flagged" and not fl:
             continue
-        if len(entries) >= 60:
-            break
+        if flt == "unreviewed" and t.get("notes"):
+            continue
         code = s2c.get(t["symbol"])
-        note = None
+        note, align = None, None
         if code:
             opened = D.parse_dt(t["open_time"])
             near = analyses_between(conn, code, (opened - timedelta(hours=6)).isoformat(), opened.isoformat())
@@ -236,26 +266,36 @@ def journal():
                 want = "long" if t["direction"] == "buy" else "short"
                 cand = next((c for c in rep["candidates"] if c["direction"] == want), None)
                 if cand:
+                    align = "aligned"
                     note = f"Aligned with Kora: {cand['setup_name']} {want} was live at entry ({cand['confidence']}% confidence, {cand['levels_text']})."
                 elif rep["bias"] != "Neutral" and (rep["bias"] == "Bullish") != (want == "long"):
+                    align = "against"
                     note = f"Against Kora's {rep['bias'].lower()} bias ({rep['confidence']}%) at entry — no matching setup was active."
                 else:
+                    align = "discretionary"
                     note = f"Discretionary — Kora had no {want} setup at entry (bias {rep['bias'].lower()}, regime {rep['regime']['primary'].lower()})."
+        if falign and align != falign:
+            continue
         if fl:
             note = (note + " " if note else "") + "Flagged: " + "; ".join(f["detail"] or f["rule_id"] for f in fl) + "."
         r = t["pnl"] / t["risk_amount"] if t.get("risk_amount") else None
         entries.append({**t, "code": code or t["symbol"], "flags": fl, "chart": charts.get(t["id"]), "kora_note": note, "r": r,
                         "dur": D.duration(t["open_time"], D.parse_dt(t["close_time"])),
                         "reviewed": bool(t.get("notes"))})
-    return render_template("journal.html", active="journal", entries=entries, f=flt)
+    shown = entries[:120]
+    summary = D.quant_stats([e for e in reversed(entries)], None) if entries else {}
+    return render_template("journal.html", active="journal", entries=shown, n_match=len(entries), f=flt, summary=summary,
+                           symbols=sorted({t["symbol"] for t in all_trades}),
+                           setups=sorted({t.get("setup") or "Untagged" for t in all_trades}),
+                           args={"sym": fsym, "setup": fsetup, "align": falign, "q": request.args.get("q", ""),
+                                 "start": fstart, "end": fend})
 
 
 @app.route("/scanner")
 def scanner():
-    cls = request.args.get("cls", "All")
-    rows = [r for r in D.instrument_rows(_conn()) if cls == "All" or r["kind"] == cls]
-    rows.sort(key=lambda r: -(r["score"] or -1))
-    return render_template("scanner.html", active="scanner", rows=rows, cls=cls)
+    conn = _conn()
+    rows = sorted(D.instrument_rows(conn), key=lambda r: -(r["score"] or -1))
+    return render_template("scanner.html", active="scanner", rows=rows, sparks=kv_get(conn, "sparklines", {}) or {})
 
 
 @app.route("/calendar")
@@ -306,7 +346,9 @@ def settings_page():
         v = os.environ.get(env) or ""
         keys.append({"env": env, "label": label, "desc": desc, "set": bool(v),
                      "masked": ("•" * 16 + v[-4:]) if len(v) > 8 else ("set" if v else "not set")})
+    from src.analyst.config import watchlist_codes
     return render_template("settings.html", active="settings", keys=keys, channels=notify.channels(),
+                           watched=watchlist_codes(get_settings(conn)),
                            instruments=instruments(), defaults=DEFAULT_SETTINGS, llm_ok=llm.available(),
                            deriv_ok=bool(os.environ.get("DERIV_API_TOKEN")),
                            mt5_pkg=__import__("src.ingest.mt5_local", fromlist=["available"]).available(),
@@ -358,17 +400,39 @@ def backtests_view():
                 d = json.loads(path.read_text())
             except (json.JSONDecodeError, OSError):
                 continue
-            runs.append({"filename": path.name, "symbol": d.get("symbol"), "range": d.get("candle_range", {}),
+            runs.append({"filename": path.name, "symbol": d.get("code") or d.get("symbol"), "range": d.get("candle_range", {}),
                          "stats": d.get("stats", {}), "starting_balance": d.get("starting_balance"),
-                         "ending_balance": d.get("ending_balance")})
-    return render_template("backtests.html", active="analytics", sub="backtests", runs=runs)
+                         "ending_balance": d.get("ending_balance"), "kind": d.get("kind", "csv"), "tf": d.get("tf"),
+                         "days": d.get("days")})
+    from src.analyst.setups import SETUP_NAMES
+    return render_template("backtests.html", active="analytics", sub="backtests", runs=runs, catalog=instruments(),
+                           setup_names=SETUP_NAMES, watched=__import__("src.analyst.config", fromlist=["x"]).watchlist_codes())
 
 
 @app.route("/backtests/<filename>")
 def backtest_detail(filename):
     path = BACKTESTS_DIR / Path(filename).name
     d = json.loads(path.read_text()) if path.exists() else {}
+    if d.get("kind") == "kora":
+        return render_template("backtest_kora.html", active="analytics", sub="backtests", filename=filename, d=d,
+                               curve=D.svg_path([0.0] + d.get("curve", [])), meta=by_code().get(d.get("code"), {}))
     return render_template("backtest_detail.html", active="analytics", sub="backtests", filename=filename, data=d)
+
+
+@app.route("/api/backtest", methods=["POST"])
+def api_backtest():
+    from src.analyst import backtest
+    body = request.get_json(force=True) or {}
+    meta = by_code().get((body.get("code") or "").upper())
+    if not meta:
+        return jsonify({"ok": False, "message": "Pick an instrument."}), 400
+    try:
+        res = backtest.run(meta, tf=body.get("tf", "H1"), days=int(body.get("days", 180)),
+                           setups=body.get("setups") or None, risk_usd=float(body.get("risk_usd", 100)))
+    except Exception as e:
+        print(f"backtest failed: {e}", file=sys.stderr)
+        return jsonify({"ok": False, "message": str(e)}), 500
+    return jsonify({"ok": True, "file": backtest.save(res), "trades": res["stats"]["trades"]})
 
 
 @app.route("/pnl-calendar")
@@ -447,7 +511,8 @@ def api_chart(code):
     feed = D.feed_status(conn)
     try:
         from src.live.sources import fetch_candles_sync
-        candles = fetch_candles_sync(meta, tf, 140, feed["source"] if feed["online"] else None)
+        count = max(60, min(request.args.get("count", 500, type=int), 1000))
+        candles = fetch_candles_sync(meta, tf, count, feed["source"] if feed["online"] else None)
     except Exception as e:
         print(f"chart candles failed for {code}: {e}", file=sys.stderr)
         return jsonify({"error": f"Couldn't fetch candles: {e}"}), 502
@@ -470,14 +535,37 @@ def api_chart(code):
     if rep:
         if rep["candidates"]:
             c = rep["candidates"][0]
-            plan = {"title": c["title"], "confidence": c["confidence"], "grade": c["grade"]}
+            plan = {"title": c["title"], "confidence": c["confidence"], "grade": c["grade"], "levels": c["levels_text"]}
             for v, lab, col in ((c["entry"], "KORA ENTRY", "#29abe2"), (c["stop"], "KORA SL", "#e0655f"),
                                 (c["tp1"], "KORA TP1", "#93c93f"), (c["tp2"], "KORA TP2", "#93c93f")):
                 overlays.append({"price": v, "label": lab, "color": col, "dash": True, "kora": True})
         levels = [{"price": lv["price"], "kind": lv["kind"], "tf": lv["tf"]} for lv in rep["key_levels"][:8]]
-    return jsonify({"code": code, "name": meta["name"], "digits": meta["digits"], "tf": tf,
+    trades = [{k: t[k] for k in ("open_time", "close_time", "open_price", "close_price", "direction", "pnl")}
+              for t in get_trades(conn) if t["symbol"] in (meta["symbol"], code)
+              and t.get("open_price") is not None and t.get("close_price") is not None]
+    return jsonify({"code": code, "name": meta["name"], "digits": meta["digits"], "tf": tf, "trades": trades,
                     "candles": candles, "overlays": overlays, "levels": levels, "plan": plan,
                     "bias": rep["bias"] if rep else None})
+
+
+@app.route("/api/chart-templates", methods=["GET", "POST"])
+def api_chart_templates():
+    conn = _conn()
+    store = kv_get(conn, "chart_templates", {"templates": {}, "default": None}) or {"templates": {}, "default": None}
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        name = (body.get("name") or "").strip()[:40]
+        if body.get("action") == "save" and name:
+            store["templates"][name] = [{"type": i.get("type"), "params": i.get("params") or {}, "color": i.get("color") or "#9bd35a"}
+                                        for i in (body.get("indicators") or [])[:12]]
+        elif body.get("action") == "delete":
+            store["templates"].pop(name, None)
+            if store.get("default") == name:
+                store["default"] = None
+        elif body.get("action") == "default" and name in store["templates"]:
+            store["default"] = name
+        kv_set(conn, "chart_templates", store)
+    return jsonify(store)
 
 
 def _chat_context(conn) -> dict:
@@ -540,12 +628,49 @@ def api_settings():
             cur.setdefault("notify", {}).update({kk: bool(vv) for kk, vv in v.items()})
         elif k in ("interval_minutes", "alert_threshold"):
             cur[k] = max(1 if k == "interval_minutes" else 0, min(240 if k == "interval_minutes" else 100, int(v)))
-        elif k == "disabled":
+        elif k == "watchlist":
             cur[k] = [c for c in v if c in by_code()]
         else:
             cur[k] = v
     kv_set(conn, "settings", cur)
     return jsonify({"ok": True, "settings": get_settings(conn)})
+
+
+@app.route("/api/watchlist", methods=["POST"])
+def api_watchlist():
+    """add / remove a code, reorder, or add / delete a custom instrument."""
+    from src.analyst.config import watchlist_codes
+    conn = _conn()
+    body = request.get_json(force=True) or {}
+    cur = kv_get(conn, "settings", {}) or {}
+    s = get_settings(conn)
+    wl = watchlist_codes(s)
+    act, code = body.get("action"), (body.get("code") or "").upper().strip()
+    if act == "add_custom":
+        sym = (body.get("symbol") or "").strip()
+        if not code or not sym:
+            return jsonify({"ok": False, "message": "Give the instrument a short code and its exact MT5 symbol name."}), 400
+        if code in by_code():
+            return jsonify({"ok": False, "message": f"{code} already exists."}), 400
+        custom = [c for c in s.get("custom_instruments", []) if c.get("code") != code]
+        custom.append({"code": code, "symbol": sym, "name": body.get("name") or sym,
+                       "deriv_symbol": (body.get("deriv_symbol") or "").strip() or None,
+                       "kind": body.get("kind") or "Custom", "digits": int(body.get("digits") or 2),
+                       "currencies": [x.strip().upper() for x in (body.get("currencies") or "").split(",") if x.strip()]})
+        cur["custom_instruments"] = custom
+        act = "add"
+    elif act == "delete_custom":
+        cur["custom_instruments"] = [c for c in s.get("custom_instruments", []) if c.get("code") != code]
+        act = "remove"
+    if act == "add" and code not in wl:
+        wl.append(code)
+    elif act == "remove":
+        wl = [c for c in wl if c != code]
+    elif act == "set" and isinstance(body.get("codes"), list):
+        wl = [c for c in body["codes"] if c in by_code()]
+    cur["watchlist"] = wl
+    kv_set(conn, "settings", cur)
+    return jsonify({"ok": True, "watchlist": wl})
 
 
 @app.route("/api/agent", methods=["POST"])

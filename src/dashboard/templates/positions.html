@@ -1,40 +1,60 @@
 {% extends "base.html" %}
 {% block content %}
-{% set cols = "22px 92px 62px 1fr 1fr 1fr 1fr 62px 110px 100px" %}
-<div class="screen" style="gap:14px">
-  <div style="display:flex;gap:12px;flex-wrap:wrap">
-    <div class="mini"><span class="l">Open</span><div class="v">{{ pos|length }}</div></div>
-    <div class="mini"><span class="l">Unrealized P/L</span><div class="v c-{{ D.tone(acct.open_pl) }}" data-live="openpl">{{ D.smoney(acct.open_pl) }}</div></div>
-    <div class="mini"><span class="l">Margin used</span><div class="v">{{ D.money(acct.margin) }}</div></div>
-    <div class="mini" title="Sum of each position's loss-to-stop as % of equity (cap {{ risk.heat_cap }}%)"><span class="l">Portfolio heat</span><div class="v c-{{ 'r' if risk.heat and risk.heat > risk.heat_cap else 'a' }}">{{ D.pct(risk.heat) }}</div></div>
-    {% if risk.uncapped %}<div class="mini" style="border-color:rgba(255,107,97,.35)"><span class="l">No stop-loss</span><div class="v c-r">{{ risk.uncapped|length }}</div></div>{% endif %}
+{% set cols = "22px 92px 62px 1fr 1fr 1fr 1fr 62px 150px 100px" %}
+<div class="screen" style="gap:16px">
+  <div class="panel" style="padding:16px 20px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="dot {{ 'bg-g pulse' if feed.online and feed.source == 'mt5' else 'bg-m' }}"></span>
+      <span style="font-weight:600;font-size:15px">{% if a.login %}{{ a.broker or 'MT5' }} · {{ a.login }}{% else %}No MT5 account connected{% endif %}</span>
+      {% if a.type %}<span class="tint {{ 'a' if a.type == 'REAL' else 'b' }}">{{ a.type|title }}</span>{% endif %}
+      <span class="faint">{{ a.server or '' }}{% if a.leverage %} · 1:{{ a.leverage }}{% endif %}{% if a.currency %} · {{ a.currency }}{% endif %}</span>
+      <span class="note" style="margin-left:auto">{% if sync %}History synced <span data-localtime="{{ sync.at }}"></span> · {{ sync.trades }} trades in the last {{ sync.days }}d window{% elif feed.source != 'mt5' %}Open your MT5 terminal and restart Kora to mirror this account live{% endif %}</span>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:14px">
+      <div class="tile"><div class="l">Balance</div><div class="v">{{ D.money(acct.balance) }}</div></div>
+      <div class="tile"><div class="l">Equity</div><div class="v" data-live="equity">{{ D.money(acct.equity) }}</div></div>
+      <div class="tile"><div class="l">Floating P/L</div><div class="v c-{{ D.tone(acct.open_pl) }}" data-live="openpl">{{ D.smoney(acct.open_pl) }}</div></div>
+      <div class="tile"><div class="l">Margin used</div><div class="v">{{ D.money(acct.margin) }}</div></div>
+      <div class="tile"><div class="l">Free margin</div><div class="v" data-live="freemargin">{{ D.money(acct.free_margin) }}</div></div>
+      <div class="tile"><div class="l">Margin level</div><div class="v {{ 'c-r' if margin_level and margin_level < 200 else '' }}">{{ '%.0f%%'|format(margin_level) if margin_level else '—' }}</div></div>
+      <div class="tile" title="Sum of each position's loss-to-stop as % of equity (cap {{ risk.heat_cap }}%)"><div class="l">Portfolio heat</div><div class="v c-{{ 'r' if risk.heat and risk.heat > risk.heat_cap else 'a' }}">{{ D.pct(risk.heat) }}</div></div>
+    </div>
   </div>
-  <div class="info"><i data-lucide="info"></i><span>Read-only view of your MT5 positions. Kora is analysis-only, so position management (closing, moving stops) stays in your MT5 terminal — each row shows how the trade sits against Kora's current analysis.</span></div>
+
+  <div class="seg">
+    {% for k, l in [('open', 'Open · ' ~ pos|length), ('history', 'History'), ('symbols', 'By symbol')] %}
+    <a href="/positions?tab={{ k }}" class="fchip {{ 'on' if tab == k }}">{{ l }}</a>
+    {% endfor %}
+  </div>
+
+  {% if tab == 'open' %}
+  {% if risk.uncapped %}<div class="warn"><i data-lucide="alert-triangle"></i><span>{{ risk.uncapped|map(attribute='code')|join(', ') }} {{ 'has' if risk.uncapped|length == 1 else 'have' }} no stop-loss — that downside is uncapped.</span></div>{% endif %}
   <div class="panel flush">
     <div class="hrow" style="grid-template-columns:{{ cols }}"><span></span><span>Symbol</span><span>Side</span><span>Entry</span><span>Current</span><span>Stop</span><span>Target</span><span>Size</span><span>Kora view</span><span style="text-align:right">Unrealized</span></div>
     {% for p in pos %}
     <div class="posbox">
       <a class="drow" data-toggle=".posbox" style="grid-template-columns:{{ cols }}">
         <span class="chev">▸</span>
-        <span class="mono" style="font-weight:600;font-size:12.5px;color:#fff">{{ p.code }}</span>
+        <span style="font-weight:600;color:#fff">{{ p.code }}</span>
         <span class="dir {{ p.direction }}" style="padding:3px 0">{{ p.direction|upper }}</span>
-        <span class="mono" style="font-size:12px;color:rgba(235,235,245,.7)">{{ p.entry_s }}</span>
-        <span class="mono" style="font-size:12px" data-live="pos:{{ p.id }}:cur">{{ p.cur_s }}</span>
-        <span class="mono c-r" style="font-size:12px">{{ p.sl_s }}</span>
-        <span class="mono c-g" style="font-size:12px">{{ p.tp_s }}</span>
-        <span class="mono" style="font-size:12px;color:rgba(235,235,245,.7)">{{ p.volume }}</span>
-        <span class="c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.kora.text if p.kora else '—' }}</span>
-        <span class="mono c-{{ p.pnl_t }}" style="font-weight:600;font-size:12.5px;text-align:right" data-live="pos:{{ p.id }}:pnl">{{ p.pnl_s }}</span>
+        <span class="mono muted">{{ p.entry_s }}</span>
+        <span class="mono" data-live="pos:{{ p.id }}:cur">{{ p.cur_s }}</span>
+        <span class="mono c-r">{{ p.sl_s }}</span>
+        <span class="mono c-g">{{ p.tp_s }}</span>
+        <span class="mono muted">{{ p.volume }}</span>
+        <span class="c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.kora.text if p.kora else '—' }}</span>
+        <span class="mono c-{{ p.pnl_t }}" style="font-weight:600;text-align:right" data-live="pos:{{ p.id }}:pnl">{{ p.pnl_s }}</span>
       </a>
-      <div class="posdetail" style="padding:4px 16px 16px 46px;gap:26px;flex-wrap:wrap;align-items:flex-end;background:var(--bg-sunk)">
-        <div><div class="note">Risk</div><div class="mono" style="font-size:12.5px">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'uncapped' }} of equity</div></div>
-        <div><div class="note">To stop</div><div class="mono c-r" style="font-size:12.5px">{{ D.smoney(p.to_stop) }}</div></div>
-        <div><div class="note">To target</div><div class="mono c-g" style="font-size:12.5px">{{ D.smoney(p.to_target) }}</div></div>
-        <div><div class="note">Duration</div><div class="mono" style="font-size:12.5px">{{ p.dur }}</div></div>
-        <div><div class="note">Swap</div><div class="mono" style="font-size:12.5px">{{ D.smoney(p.swap) }}</div></div>
-        <div><div class="note">Commission</div><div class="mono" style="font-size:12.5px">{{ D.smoney(p.commission) }}</div></div>
+      <div class="posdetail" style="padding:6px 20px 18px 50px;gap:28px;flex-wrap:wrap;align-items:flex-end;background:var(--bg-sunk)">
+        <div><div class="note">Risk</div><div class="mono">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'uncapped' }} of equity</div></div>
+        <div><div class="note">To stop</div><div class="mono c-r">{{ D.smoney(p.to_stop) }}</div></div>
+        <div><div class="note">To target</div><div class="mono c-g">{{ D.smoney(p.to_target) }}</div></div>
+        <div><div class="note">Opened</div><div class="mono" data-localtime="{{ p.open_time }}" data-fmt="datetime"></div></div>
+        <div><div class="note">Duration</div><div class="mono">{{ p.dur }}</div></div>
+        <div><div class="note">Swap</div><div class="mono">{{ D.smoney(p.swap) }}</div></div>
+        <div><div class="note">Ticket</div><div class="mono">{{ p.id }}</div></div>
         <div style="min-width:150px"><div class="note">Kora alignment</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div class="bar t5" style="flex:1;background:rgba(255,255,255,.1)"><i class="{{ 'grad' if not p.kora or p.kora.tone != 'r' else 'bg-r' }}" style="width:{{ p.kora.conf if p.kora else 0 }}%"></i></div><span class="mono c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:11px">{{ '%d%%'|format(p.kora.conf) if p.kora else '—' }}</span></div></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div class="bar t5" style="flex:1"><i class="{{ 'grad' if not p.kora or p.kora.tone != 'r' else 'bg-r' }}" style="width:{{ p.kora.conf if p.kora else 0 }}%"></i></div><span class="mono c-{{ p.kora.tone if p.kora else 'm' }}" style="font-size:12px">{{ '%d%%'|format(p.kora.conf) if p.kora else '—' }}</span></div></div>
         <div style="margin-left:auto;display:flex;gap:8px">
           <a class="obtn b" href="/kora/{{ p.code }}">Kora breakdown</a>
           <a class="obtn" href="/charts?code={{ p.code }}&tf=H1">Chart</a>
@@ -42,21 +62,64 @@
       </div>
     </div>
     {% else %}
-    <div class="empty">{{ 'No open positions.' if feed.online else 'Live positions stream in from the Kora service — start it with python scripts/run_kora.py.' }}</div>
+    <div class="empty">{{ 'No open positions.' if feed.online else 'Live positions stream in from your MT5 terminal while the Kora service runs.' }}</div>
     {% endfor %}
   </div>
-  <div class="panel">
-    <div class="ph"><h3 class="h3">Recently closed</h3><a href="/trades" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:11.5px">Full history →</a></div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
-      {% for t in closed %}
-      <a href="/trades/{{ t.id }}" style="background:rgba(255,255,255,.035);border-radius:11px;padding:9px 12px;display:flex;align-items:center;gap:9px;color:inherit">
-        <span class="mono faint" style="font-size:11px">{{ D.parse_dt(t.close_time).strftime('%b %d') }}</span>
-        <span class="mono" style="font-weight:600;font-size:12px" title="{{ t.symbol }}">{{ t.code }}</span>
-        <span class="mono c-{{ D.tone(t.pnl) }}" style="margin-left:auto;font-weight:600;font-size:12px">{{ D.smoney(t.pnl) }}</span>
-      </a>
-      {% else %}<div class="empty">No closed trades ingested yet — run <code>scripts/run_ingest.py</code>.</div>{% endfor %}
-    </div>
+  <div class="info"><i data-lucide="info"></i><span>Read-only mirror of your MT5 account. Kora never trades, so you open, close and manage positions in MT5. Each row shows how the trade sits against Kora's current analysis.</span></div>
+
+  {% elif tab == 'history' %}
+  <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="tab" value="history">
+    <select class="field" name="sym" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()"><option value="">All symbols</option>{% for s in symbols %}<option {{ 'selected' if hsym == s }}>{{ s }}</option>{% endfor %}</select>
+    <select class="field" name="days" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()">
+      {% for d, l in [(1,'Today'),(7,'7 days'),(30,'30 days'),(90,'90 days'),(365,'1 year'),(0,'All time')] %}<option value="{{ d }}" {{ 'selected' if hdays == d }}>{{ l }}</option>{% endfor %}</select>
+    <a href="/journal{{ '?sym=' ~ hsym if hsym }}" class="obtn" style="margin-left:auto">Open in Journal</a>
+  </form>
+  {% if hist_stats %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    <div class="stat"><div class="lbl-up">Closed trades</div><div class="v" style="font-size:21px">{{ hist_stats.trades }}</div></div>
+    <div class="stat"><div class="lbl-up">Net P/L</div><div class="v c-{{ D.tone(hist_stats.net) }}" style="font-size:21px">{{ D.smoney(hist_stats.net) }}</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v" style="font-size:21px">{{ D.pct(hist_stats.win_rate, 0) }}</div></div>
+    <div class="stat"><div class="lbl-up">Profit factor</div><div class="v" style="font-size:21px">{{ '%.2f'|format(hist_stats.pf) if hist_stats.pf else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Avg hold</div><div class="v" style="font-size:21px">{{ hist_stats.avg_hold }}</div></div>
   </div>
+  {% endif %}
+  <div class="panel flush" style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>Closed</th><th>Symbol</th><th>Side</th><th>Volume</th><th>Entry</th><th>Exit</th><th>Held</th><th>Setup</th><th style="text-align:right">P/L</th></tr></thead>
+      <tbody>
+      {% for t in hist %}
+      <tr style="cursor:pointer" onclick="location.href='/trades/{{ t.id }}'">
+        <td class="faint" data-localtime="{{ t.close_time }}" data-fmt="datetime"></td><td style="font-weight:600;color:#fff" title="{{ t.symbol }}">{{ t.code }}</td>
+        <td><span class="dir {{ t.direction }}">{{ t.direction|upper }}</span></td><td>{{ t.volume }}</td>
+        <td>{{ '%.5g'|format(t.open_price) if t.open_price is not none else '—' }}</td><td>{{ '%.5g'|format(t.close_price) if t.close_price is not none else '—' }}</td>
+        <td class="muted">{{ t.dur }}</td><td class="muted">{{ t.setup or '—' }}</td>
+        <td class="c-{{ D.tone(t.pnl) }}" style="text-align:right;font-weight:600">{{ D.smoney(t.pnl) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="9"><div class="empty">No closed trades in this window. They sync automatically from your MT5 terminal, or run <code>python scripts/run_ingest.py --source mt5 --days-back 365</code>.</div></td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="panel flush" style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>Symbol</th><th>Open now</th><th>Floating</th><th>Closed trades</th><th>Win rate</th><th>Profit factor</th><th>Avg win / loss</th><th style="text-align:right">Realized P/L</th></tr></thead>
+      <tbody>
+      {% for r in sym_rows %}
+      <tr>
+        <td><a href="/positions?tab=history&sym={{ r.symbol|urlencode }}&days=0" style="font-weight:600;color:#fff">{{ r.code }}</a></td>
+        <td>{{ r.open or '—' }}</td><td class="c-{{ D.tone(r.open_pl) }}">{{ D.smoney(r.open_pl) if r.open else '—' }}</td>
+        <td>{{ r.trades or 0 }}</td><td>{{ D.pct(r.win_rate, 0) if r.win_rate is not none else '—' }}</td>
+        <td class="{{ 'c-r' if r.pf is not none and r.pf < 1 }}">{{ '%.2f'|format(r.pf) if r.pf else '—' }}</td>
+        <td><span class="c-g">{{ D.smoney(r.avg_win, 0) }}</span> <span class="faint">/</span> <span class="c-r">{{ D.smoney(r.avg_loss, 0) }}</span></td>
+        <td class="c-{{ D.tone(r.net) }}" style="text-align:right;font-weight:600">{{ D.smoney(r.net) if r.net is not none else '—' }}</td>
+      </tr>
+      {% else %}<tr><td colspan="8"><div class="empty">No trading activity yet.</div></td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 <style>.posdetail{display:none}.posbox.open .posdetail{display:flex}.posbox.open .drow{background:var(--bg-sunk)}</style>
 {% endblock %}

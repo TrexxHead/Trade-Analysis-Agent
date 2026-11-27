@@ -30,11 +30,18 @@ from src.store.db import add_decision, kora_connection, save_setup_stats  # noqa
 
 
 def history(meta: dict, days: int) -> list[dict]:
-    if os.environ.get("KORA_DATA_SOURCE", "").lower() == "sim":
+    from src.live.sources import fetch_candles_sync, resolve_source_name
+    name = resolve_source_name()
+    if name == "sim":
         from src.live.sim import gen_candles
         return gen_candles(meta["code"], "H1", days * 24)
-    from src.ingest.metatrader import fetch_candle_history
-    return fetch_candle_history(meta["symbol"], "H1", days)
+    if name == "mt5":
+        from src.ingest.mt5_local import candle_history
+        return candle_history(meta["symbol"], "H1", days)
+    if name == "metaapi":
+        from src.ingest.metatrader import fetch_candle_history
+        return fetch_candle_history(meta["symbol"], "H1", days)
+    return fetch_candles_sync(meta, "H1", min(days * 24, 5000), "deriv")
 
 
 def main():
@@ -43,6 +50,8 @@ def main():
     ap.add_argument("--days", type=int, default=180)
     args = ap.parse_args()
     conn = kora_connection()
+    from src.live.sources import resolve_source_name
+    print(f"History source: {resolve_source_name()}")
     todo = [m for m in instruments() if not args.code or m["code"] == args.code.upper()]
     if not todo:
         raise SystemExit(f"Unknown code {args.code}")

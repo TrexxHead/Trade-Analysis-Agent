@@ -3,18 +3,20 @@
 <div class="screen" style="max-width:860px">
   <div class="panel">
     <h3 class="h3 lg" style="margin-bottom:4px">Data connections</h3>
-    <p class="note" style="margin:0 0 14px;font-size:11.5px;color:rgba(230,237,233,.5)">Where Kora gets market data. Kora is analysis-only — none of these are used to place orders.</p>
+    <p class="note" style="margin:0 0 14px;font-size:11.5px;color:rgba(235,235,245,.5)">Where Kora gets market data. Kora is analysis-only — none of these are used to place orders.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
       {% set hb = feed.hb or {} %}
       {% for name, desc, ok, status in [
         ('Kora service', 'Live feed + scheduled analysis (scripts/run_kora.py)', feed.online, ('Running · ' ~ (feed.source or '') ~ (' · ' ~ (feed.latency|round|int) ~ ' ms' if feed.latency else '')) if feed.online else 'Offline'),
-        ('MetaTrader 5 via MetaApi', 'Quotes, positions, account, candles · ' ~ (acct.account.server or 'Deriv MT5'), metaapi_ok, 'Configured' if metaapi_ok else 'Not configured'),
-        ('Deriv API', 'Deriv-native trade history (optional)', deriv_ok, 'Configured' if deriv_ok else 'Not configured'),
+        ('MT5 terminal (free)', 'Live prices, positions, balance and history straight from your Deriv MT5 app', feed.source == 'mt5', 'In use' if feed.source == 'mt5' else ('Package installed — open MT5 and restart Kora' if mt5_pkg else 'Windows only · pip install MetaTrader5')),
+        ('Deriv public feed (free)', 'Live prices and candles for every instrument, no account needed', feed.source == 'deriv', 'In use' if feed.source == 'deriv' else 'Fallback when MT5 is closed'),
+        ('MetaApi (optional, paid)', 'Cloud bridge to MT5 — only needed if MT5 can\'t run on this PC', metaapi_ok, 'Configured' if metaapi_ok else 'Not needed'),
+        ('Deriv API token', 'Deriv-native (non-MT5) trade history, optional', deriv_ok, 'Configured' if deriv_ok else 'Not configured'),
         ('Economic calendar', 'ForexFactory weekly feed (no key needed)', true, 'Public feed'),
         ('Claude (Anthropic)', 'Ask Kora chat + optional narratives', llm_ok, 'Configured' if llm_ok else 'Not configured')] %}
       <div style="display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.035);border-radius:13px;padding:12px 15px">
         <span class="dot {{ 'bg-g' if ok else 'bg-m' }}" style="width:8px;height:8px"></span>
-        <div><div style="font-family:var(--font-display);font-weight:600;font-size:13px;color:#fff">{{ name }}</div><div style="font-size:11px;color:rgba(230,237,233,.48)">{{ desc }}</div></div>
+        <div><div style="font-family:var(--font-display);font-weight:600;font-size:13px;color:#fff">{{ name }}</div><div style="font-size:11px;color:rgba(235,235,245,.48)">{{ desc }}</div></div>
         <span class="mono {{ 'c-g' if ok else 'muted' }}" style="margin-left:auto;font-size:11px;text-align:right">{{ status }}</span>
       </div>
       {% endfor %}
@@ -26,7 +28,7 @@
     <h3 class="h3 lg" style="margin-bottom:12px">API keys</h3>
     {% for k in keys %}
     <div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.035);border-radius:13px;padding:12px 15px;margin-bottom:8px">
-      <i data-lucide="key-round" style="width:15px;height:15px;color:rgba(230,237,233,.5)"></i>
+      <i data-lucide="key-round" style="width:15px;height:15px;color:rgba(235,235,245,.5)"></i>
       <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">{{ k.label }}</div><div class="note">{{ k.desc }} · <span class="mono">{{ k.env }}</span></div></div>
       <span class="mono {{ '' if k.set else 'muted' }}" style="margin-left:auto;font-size:12.5px;letter-spacing:.05em">{{ k.masked }}</span>
     </div>

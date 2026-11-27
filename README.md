@@ -28,12 +28,40 @@ ForexFactory ───>│ calendar · correlations · journal chart snapshots �
 Deriv / MetaApi deal history ──> scripts/run_ingest.py ──> trades, rule checks, analytics, journal
 ```
 
+### Real data — free
+
+Kora works with two free data sources and picks one automatically
+(`KORA_DATA_SOURCE=auto`):
+
+1. **Your MT5 terminal (recommended).** Install and open the Deriv MT5 app
+   on this PC and log in. Kora reads live prices, candles, your positions,
+   balance and trade history from it through MetaQuotes' official
+   `MetaTrader5` Python package. It's local, free, needs no API key, and is
+   read-only, so Kora never sends orders. Windows only. Make sure every
+   instrument in `config/instruments.yaml` shows in MT5's Market Watch (right
+   click → Show All).
+2. **Deriv's public feed (fallback).** Deriv's free WebSocket API gives live
+   prices and candles for all 11 instruments with no account needed. Kora
+   uses it automatically when MT5 isn't open. It can't see positions or
+   balances.
+
+MetaApi (`METAAPI_TOKEN`) is still supported but optional. The only paid
+piece is the optional Claude chat/narratives (`ANTHROPIC_API_KEY`).
+Telegram alerts are free.
+
+```bash
+python scripts/train_kora.py           # calibrate on real history from MT5 or Deriv
+python scripts/run_kora.py             # live analysis
+python scripts/run_dashboard.py        # http://127.0.0.1:5000
+python scripts/run_ingest.py --source mt5 --days-back 90   # your closed trades for Journal/Analytics
+```
+
 ### Quick start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # fill in METAAPI_TOKEN / METAAPI_ACCOUNT_ID at minimum
+cp .env.example .env            # nothing required: open MT5, or Kora falls back to Deriv's free feed
 python scripts/train_kora.py    # calibrate setups on 180 days of history (a few minutes)
 python scripts/run_kora.py      # Kora: live feed + analysis every 15 min + alerts
 python scripts/run_dashboard.py # hub at http://127.0.0.1:5000

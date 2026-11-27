@@ -13,6 +13,7 @@ Both expose the same async interface:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
 import time
@@ -174,10 +175,199 @@ class SimSource:
         pass
 
 
+class MT5Source:
+    """Your own MT5 terminal via the free MetaTrader5 package (Windows)."""
+    name = "mt5"
+
+    def __init__(self, instruments: list[dict]):
+        self.instruments = instruments
+        self.by_symbol = {m["symbol"]: m for m in instruments}
+        self.latency_ms: float | None = None
+        self.errors: dict[str, str] = {}
+
+    async def start(self):
+        from src.ingest import mt5_local
+        mt5_local.connect()
+        for m in self.instruments:
+            try:
+                mt5_local.ensure_symbol(m["symbol"])
+            except Exception as e:
+                self.errors[m["code"]] = str(e)
+
+    def snapshot(self) -> dict:
+        from src.ingest import mt5_local
+        t0 = time.perf_counter()
+        quotes = {}
+        for m in self.instruments:
+            if m["code"] in self.errors and "not found" in self.errors[m["code"]]:
+                continue
+            q = mt5_local.tick(m["symbol"])
+            if q:
+                quotes[m["code"]] = q
+        self.latency_ms = (time.perf_counter() - t0) * 1000
+        return {"quotes": quotes, "account": mt5_local.account(), "positions": mt5_local.positions(self.by_symbol)}
+
+    async def candles(self, symbol: str, tf: str, count: int, end: datetime | None = None) -> list[dict]:
+        from src.ingest import mt5_local
+        return mt5_local.candles(symbol, tf, count, end)
+
+    async def close(self):
+        pass
+
+
+DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id={app_id}"
+DERIV_GRAN = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400}
+
+
+class DerivSource:
+    """Deriv's free public WebSocket API: live ticks and candles for every
+    watchlist instrument, no account or token needed. It can't see MT5
+    positions or balances - run your MT5 terminal for those."""
+    name = "deriv"
+
+    def __init__(self, instruments: list[dict]):
+        self.instruments = [m for m in instruments if m.get("deriv_symbol")]
+        self.by_deriv = {m["deriv_symbol"]: m for m in self.instruments}
+        self.by_symbol = {m["symbol"]: m for m in self.instruments}
+        self.latency_ms: float | None = None
+        self.errors: dict[str, str] = {}
+        self.ticks: dict[str, dict] = {}
+        self.ws = None
+        self.pending: dict[int, asyncio.Future] = {}
+        self.req = 0
+        self.reader = None
+
+    async def start(self):
+        await self._connect()
+
+    async def _connect(self):
+        import websockets
+        url = DERIV_WS.format(app_id=os.environ.get("DERIV_APP_ID") or "1089")
+        self.ws = await websockets.connect(url, open_timeout=20, ping_interval=25, max_size=2 ** 23)
+        self.reader = asyncio.create_task(self._read())
+        for m in self.instruments:
+            await self.ws.send(json.dumps({"ticks": m["deriv_symbol"], "subscribe": 1}))
+
+    async def _read(self):
+        try:
+            async for raw in self.ws:
+                msg = json.loads(raw)
+                rid = msg.get("req_id")
+                if rid in self.pending:
+                    self.pending.pop(rid).set_result(msg)
+                elif msg.get("msg_type") == "tick" and "tick" in msg:
+                    t = msg["tick"]
+                    self.ticks[t["symbol"]] = t
+                elif msg.get("error") and msg.get("echo_req", {}).get("ticks"):
+                    sym = msg["echo_req"]["ticks"]
+                    m = self.by_deriv.get(sym)
+                    if m:
+                        self.errors[m["code"]] = f"Deriv: {msg['error'].get('message')}"
+        except Exception as e:
+            for f in self.pending.values():
+                if not f.done():
+                    f.set_exception(e)
+            self.pending.clear()
+
+    async def _ensure(self):
+        if self.ws is None or self.reader is None or self.reader.done():
+            await self._connect()
+
+    async def _call(self, payload: dict, timeout: float = 30) -> dict:
+        await self._ensure()
+        self.req += 1
+        payload = {**payload, "req_id": self.req}
+        fut = asyncio.get_running_loop().create_future()
+        self.pending[self.req] = fut
+        t0 = time.perf_counter()
+        await self.ws.send(json.dumps(payload))
+        msg = await asyncio.wait_for(fut, timeout)
+        self.latency_ms = (time.perf_counter() - t0) * 1000
+        if msg.get("error"):
+            raise RuntimeError(f"Deriv: {msg['error'].get('message')}")
+        return msg
+
+    def snapshot(self) -> dict:
+        quotes = {}
+        for sym, t in self.ticks.items():
+            m = self.by_deriv.get(sym)
+            if not m:
+                continue
+            bid, ask = t.get("bid") or t["quote"], t.get("ask") or t["quote"]
+            quotes[m["code"]] = {"bid": bid, "ask": ask, "price": t["quote"],
+                                 "time": datetime.fromtimestamp(t["epoch"], tz=timezone.utc).isoformat()}
+        return {"quotes": quotes, "account": {}, "positions": []}
+
+    async def candles(self, symbol: str, tf: str, count: int, end: datetime | None = None) -> list[dict]:
+        m = self.by_symbol.get(symbol) or self.by_deriv.get(symbol)
+        if not m:
+            raise RuntimeError(f"No Deriv symbol configured for {symbol}")
+        msg = await self._call({"ticks_history": m["deriv_symbol"], "style": "candles", "granularity": DERIV_GRAN[tf],
+                                "count": min(count, 5000), "end": str(int(end.timestamp())) if end else "latest"})
+        return [{"time": datetime.fromtimestamp(c["epoch"], tz=timezone.utc).isoformat(), "open": float(c["open"]),
+                 "high": float(c["high"]), "low": float(c["low"]), "close": float(c["close"]), "volume": None}
+                for c in msg.get("candles", [])]
+
+    async def close(self):
+        try:
+            await self.ws.close()
+        except Exception:
+            pass
+
+
+def resolve_source_name() -> str:
+    """KORA_DATA_SOURCE = sim | mt5 | deriv | metaapi | auto (default).
+    auto: your MT5 terminal if it's running, else MetaApi if configured,
+    else Deriv's free public feed."""
+    choice = (os.environ.get("KORA_DATA_SOURCE") or "auto").lower()
+    if choice != "auto":
+        return choice
+    try:
+        from src.ingest import mt5_local
+        if mt5_local.available():
+            mt5_local.connect()
+            return "mt5"
+    except Exception:
+        pass
+    if os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID"):
+        return "metaapi"
+    return "deriv"
+
+
 def make_source(instruments: list[dict]):
-    if os.environ.get("KORA_DATA_SOURCE", "").lower() == "sim":
+    name = resolve_source_name()
+    if name == "sim":
         return SimSource(instruments)
-    if not (os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID")):
-        raise SystemExit("METAAPI_TOKEN / METAAPI_ACCOUNT_ID not set. Fill in .env, or run with "
-                         "KORA_DATA_SOURCE=sim to demo the hub on simulated data.")
-    return MetaApiSource(instruments)
+    if name == "mt5":
+        return MT5Source(instruments)
+    if name == "deriv":
+        return DerivSource(instruments)
+    if name == "metaapi":
+        if not (os.environ.get("METAAPI_TOKEN") and os.environ.get("METAAPI_ACCOUNT_ID")):
+            raise SystemExit("KORA_DATA_SOURCE=metaapi but METAAPI_TOKEN / METAAPI_ACCOUNT_ID aren't set in .env")
+        return MetaApiSource(instruments)
+    raise SystemExit(f"Unknown KORA_DATA_SOURCE '{name}' - use auto, mt5, deriv, metaapi or sim")
+
+
+def fetch_candles_sync(meta: dict, tf: str, count: int, source_name: str | None = None) -> list[dict]:
+    """One-off candle fetch for the hub's chart endpoint, from whichever
+    source the Kora service is using (or the best available)."""
+    name = source_name or resolve_source_name()
+    if name == "sim":
+        return sim.gen_candles(meta["code"], tf, count)
+    if name == "mt5":
+        from src.ingest import mt5_local
+        return mt5_local.candles(meta["symbol"], tf, count)
+    if name == "metaapi":
+        from src.ingest.metatrader import fetch_candles
+        return fetch_candles(meta["symbol"], tf, count)
+
+    async def via_deriv():
+        src = DerivSource([meta])
+        src.instruments = []  # no tick subscriptions for a one-off fetch
+        await src._connect()
+        try:
+            return await src.candles(meta["symbol"], tf, count)
+        finally:
+            await src.close()
+    return asyncio.run(via_deriv())

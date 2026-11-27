@@ -22,7 +22,7 @@
   </div>
 
   <div class="seg">
-    {% for k, l in [('open', 'Open · ' ~ pos|length), ('history', 'History'), ('symbols', 'By symbol')] %}
+    {% for k, l in [('open', 'Open · ' ~ pos|length), ('orders', 'Pending · ' ~ orders|length), ('history', 'History'), ('symbols', 'By symbol')] %}
     <a href="/positions?tab={{ k }}" class="fchip {{ 'on' if tab == k }}">{{ l }}</a>
     {% endfor %}
   </div>
@@ -66,6 +66,26 @@
     {% endfor %}
   </div>
   <div class="info"><i data-lucide="info"></i><span>Read-only mirror of your MT5 account. Kora never trades, so you open, close and manage positions in MT5. Each row shows how the trade sits against Kora's current analysis.</span></div>
+
+  {% elif tab == 'orders' %}
+  <div class="panel flush" style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>Placed</th><th>Symbol</th><th>Order</th><th>Volume</th><th>Price</th><th>Distance</th><th>Stop</th><th>Target</th><th>Ticket</th></tr></thead>
+      <tbody>
+      {% for o in orders %}{% set dg = (cat.get(o.code) or {}).get('digits', 2) %}{% set q = quotes.get(o.code) or {} %}
+      <tr>
+        <td class="faint" data-localtime="{{ o.placed }}" data-fmt="datetime"></td>
+        <td style="font-weight:600;color:#fff" title="{{ o.symbol }}">{{ o.code }}</td>
+        <td><span class="dir {{ o.direction }}">{{ o.direction|upper }}</span> <span class="muted">{{ o.order_type }}</span></td>
+        <td>{{ o.volume }}</td><td class="mono">{{ D.price(o.price, dg) }}</td>
+        <td class="mono muted">{% if q.price %}{{ D.price((o.price - q.price)|abs, dg) }} away{% else %}—{% endif %}</td>
+        <td class="mono c-r">{{ D.price(o.stop_loss, dg) if o.stop_loss else 'none' }}</td><td class="mono c-g">{{ D.price(o.take_profit, dg) if o.take_profit else 'none' }}</td>
+        <td class="faint">{{ o.id }}</td>
+      </tr>
+      {% else %}<tr><td colspan="9"><div class="empty">No pending orders in MT5.</div></td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% elif tab == 'history' %}
   <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">

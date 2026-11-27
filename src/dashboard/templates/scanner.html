@@ -19,7 +19,7 @@
       <span></span><span data-sort="code" style="cursor:pointer">Symbol</span><span>Last 48h</span><span data-sort="chg" style="cursor:pointer">Price · change</span>
       <span data-sort="bias" style="cursor:pointer">Bias</span><span data-sort="vol" style="cursor:pointer" title="ATR percentile vs last 100 H1 bars">Volatility</span>
       <span data-sort="rsi" style="cursor:pointer">RSI H1</span><span data-sort="adx" style="cursor:pointer">ADX H1</span>
-      <span data-sort="lvl" style="cursor:pointer" title="Distance to the nearest key level, in ATR">Nearest lvl</span>
+      <span data-sort="lvl" style="cursor:pointer" title="Distance to the nearest key level in ATR, and the live spread in points">Level · spread</span>
       <span>Kora read</span><span data-sort="score" style="cursor:pointer;text-align:right">Score ↓</span>
     </div>
     <div id="rows">
@@ -37,7 +37,7 @@
       <span style="display:flex;align-items:center;gap:6px"><span class="bar t5" style="flex:1"><i class="bg-a" style="width:{{ r.vol or 0 }}%"></i></span></span>
       <span class="mono {{ 'c-a' if h1.rsi and (h1.rsi > 70 or h1.rsi < 30) }}">{{ h1.rsi if h1.rsi is not none else '—' }}</span>
       <span class="mono {{ 'c-b' if h1.adx and h1.adx >= 25 }}">{{ h1.adx if h1.adx is not none else '—' }}</span>
-      <span class="mono">{{ '%.2f'|format(near) if near is not none else '—' }}{% if rep and rep.fundamentals.event_risk %} <span class="tint r" title="{{ rep.fundamentals.event_risk.text }}">news</span>{% endif %}</span>
+      <span class="mono" title="Live spread: {{ r.spread_pts ~ ' points' if r.spread_pts is not none else 'n/a' }}">{{ '%.2f'|format(near) if near is not none else '—' }}{% if r.spread_pts is not none %} <span class="faint" style="font-size:11px">· {{ r.spread_pts }}pt</span>{% endif %}{% if rep and rep.fundamentals.event_risk %} <span class="tint r" title="{{ rep.fundamentals.event_risk.text }}">news</span>{% endif %}</span>
       <span style="font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% if r.best %}<span class="grade {{ r.best.grade }}">{{ r.best.grade }}</span> <span class="dir {{ r.best.direction }}">{{ r.best.direction|upper }}</span> {{ r.best.setup_name }}{% elif rep %}{{ rep.headline or rep.regime.primary }}{% else %}Not analysed — add to watchlist{% endif %}</span>
       {% set s = r.score %}
       <span class="mono" style="font-weight:600;font-size:13px;border-radius:8px;padding:4px 0;text-align:center;{% if s is none %}color:var(--faint);background:rgba(255,255,255,.04){% elif s >= 70 %}color:var(--g);background:rgba(155,211,90,.15){% elif s >= 55 %}color:var(--a);background:rgba(255,195,77,.13){% else %}color:var(--muted);background:rgba(255,255,255,.07){% endif %}">{{ s if s is not none else '—' }}</span>

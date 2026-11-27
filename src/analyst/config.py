@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "llm_narratives": False,      # write a "Kora's take" paragraph per breakdown via Claude (costs API tokens)
     "watchlist": None,            # list of codes; None = config default_watchlist
     "custom_instruments": [],     # user-added instruments (same fields as the catalog)
+    "setups_off": {},             # {code: [setup ids Kora should not look for on that instrument]}
     "user_initial": "D",
     "pnl_mode": "usd",
 }
@@ -39,13 +40,28 @@ def _conn_settings() -> dict | None:
         return None
 
 
+def _symbol_specs() -> dict:
+    try:
+        from src.store.db import kora_connection, kv_get
+        return kv_get(kora_connection(), "symbol_specs", {}) or {}
+    except Exception:
+        return {}
+
+
 def catalog(settings: dict | None = None) -> list[dict]:
-    items = list(load_watchlist()["instruments"])
+    specs = _symbol_specs()
+    items = []
+    for m in load_watchlist()["instruments"]:
+        s = specs.get(m["code"]) or {}
+        # the broker's own precision (read from MT5) wins over the config default
+        items.append({**m, "digits": s["digits"]} if s.get("digits") is not None else dict(m))
     settings = settings if settings is not None else _conn_settings()
     known = {m["code"] for m in items}
     for c in (settings or {}).get("custom_instruments", []) or []:
         if c.get("code") and c["code"] not in known:
-            items.append({"kind": "Custom", "digits": 2, "currencies": [], **c, "custom": True})
+            s = specs.get(c["code"]) or {}
+            items.append({"kind": "Custom", "digits": 2, "currencies": [], **c, "custom": True,
+                          **({"digits": s["digits"]} if s.get("digits") is not None else {})})
     return items
 
 

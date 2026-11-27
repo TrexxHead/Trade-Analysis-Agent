@@ -36,6 +36,11 @@
         <button class="obtn" id="btn-ind"><i data-lucide="activity"></i>Indicators</button>
         <select class="field" id="tpl-select" style="width:auto;padding:6px 10px;font-size:13px"><option value="">Templates…</option></select>
         <span style="width:1px;height:20px;background:var(--line2)"></span>
+        <button class="obtn" id="draw-h" title="Click the chart to place a horizontal line">― Line</button>
+        <button class="obtn" id="draw-t" title="Click two points on the chart">⟋ Trend</button>
+        <button class="obtn" id="draw-undo" title="Remove the last drawing">Undo</button>
+        <button class="obtn r" id="draw-clear">Clear</button>
+        <span style="width:1px;height:20px;background:var(--line2)"></span>
         <button class="fchip on" data-show="kora">Kora plan</button>
         <button class="fchip on" data-show="levels">S/R levels</button>
         <button class="fchip on" data-show="trades">My trades</button>
@@ -86,7 +91,8 @@
 (function(){
   const K = window.KORA, code = {{ code|tojson }}, tf = {{ tf|tojson }}, T = K.INDICATOR_TYPES;
   const ohlc = K.$('#ohlc');
-  const chart = new K.Chart(K.$('#chart'), { height: 520, onHover: (k) => {
+  const saveDrawings = (list) => K.post('/api/drawings', { code, drawings: list });
+  const chart = new K.Chart(K.$('#chart'), { height: 520, onDrawings: saveDrawings, onHover: (k) => {
     if (!chart.data || !k) return; const d = chart.data.digits > 4 ? 5 : chart.data.digits;
     ohlc.textContent = `O ${K.fm(k.open,d)}  H ${K.fm(k.high,d)}  L ${K.fm(k.low,d)}  C ${K.fm(k.close,d)}`;
   }});
@@ -111,6 +117,12 @@
   K.$('#ind-add').innerHTML = '<option value="">Add indicator…</option>' + Object.entries(T).map(([k, t]) => `<option value="${k}">${t.name}${t.pane ? ' (pane)' : ''}</option>`).join('');
   K.$('#ind-add').onchange = (e) => { const k = e.target.value; if (!k) return; inds.push({ type: k, params: { ...T[k].params }, color: T[k].color }); e.target.value = ''; save(); };
   K.$('#btn-ind').onclick = () => { const p = K.$('#ind-panel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+  K.$('#draw-h').onclick = () => { chart.mode = 'h'; chart.pending = null; K.toast('Click the chart to place the line'); };
+  K.$('#draw-t').onclick = () => { chart.mode = 't'; chart.pending = null; K.toast('Click two points for the trend line'); };
+  K.$('#draw-undo').onclick = () => { chart.drawings.pop(); saveDrawings(chart.drawings); chart.draw(); };
+  K.$('#draw-clear').onclick = () => { chart.drawings = []; saveDrawings([]); chart.draw(); K.toast('Drawings cleared for ' + code); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { chart.mode = null; chart.pending = null; chart.draw(); } });
+  fetch('/api/drawings?code=' + code).then((r) => r.json()).then((r) => { chart.drawings = r.drawings || []; chart.draw(); });
   K.$$('[data-show]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); chart.show[b.dataset.show] = b.classList.contains('on'); chart.draw(); });
 
   async function loadTemplates() {

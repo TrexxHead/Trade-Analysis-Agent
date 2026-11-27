@@ -50,6 +50,26 @@
     <div style="margin-top:14px;display:flex;gap:8px"><button class="btn-pri" id="s-save">Save</button></div>
   </div>
 
+  <div class="panel" id="setups">
+    <div class="ph"><h3 class="h3 lg">Setups per instrument</h3><span class="r">Switch off setups that don't suit an instrument · figures are backtested expectancy per trade</span></div>
+    <div style="overflow-x:auto">
+    <table class="tbl" style="font-size:12.5px">
+      <thead><tr><th>Instrument</th>{% for k, n in setup_names.items() %}<th style="text-align:center">{{ n }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for code in watched %}
+      <tr><td style="font-weight:600;color:#fff">{{ code }}</td>
+        {% for k, n in setup_names.items() %}{% set e = setup_exp.get(code ~ ':' ~ k) %}{% set off = k in (settings.setups_off.get(code) or []) %}
+        <td style="text-align:center">
+          <button class="fchip {{ '' if off else 'on' }}" data-sc="{{ code }}" data-ss="{{ k }}" style="padding:4px 10px;font-size:12px;min-width:74px" title="{{ (e.n ~ ' backtested trades') if e else 'Not trained yet - run scripts/train_kora.py' }}">{% if e %}{{ '%+.2fR'|format(e.exp) }}{% else %}{{ 'Off' if off else 'On' }}{% endif %}</button>
+        </td>{% endfor %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="note" style="margin-top:10px">A white chip means Kora looks for that setup on that instrument. Click to toggle. Changes apply from the next analysis cycle. Negative figures lost money in the backtest.</div>
+  </div>
+
   <div class="panel" id="watchlist">
     <div class="ph"><h3 class="h3 lg">Watchlist</h3><span class="r">Kora analyses only what's switched on · {{ watched|length }} watching</span></div>
     {% for kind in ['Metals', 'Synthetics', 'Forex', 'Custom'] %}{% set group = instruments|selectattr('kind', 'equalto', kind)|list %}
@@ -101,6 +121,13 @@
   });
   K.$$('[data-setting]').forEach((b) => b.onclick = async () => {
     b.classList.toggle('on'); await K.post('/api/settings', { [b.dataset.setting]: b.classList.contains('on') }); K.toast('Saved');
+  });
+  K.$$('[data-sc]').forEach((b) => b.onclick = async () => {
+    b.classList.toggle('on');
+    const off = {};
+    K.$$('[data-sc]').forEach((x) => { if (!x.classList.contains('on')) (off[x.dataset.sc] = off[x.dataset.sc] || []).push(x.dataset.ss); });
+    await K.post('/api/settings', { setups_off: off });
+    K.toast(b.dataset.sc + ': ' + (b.classList.contains('on') ? 'looking for' : 'ignoring') + ' that setup from the next cycle');
   });
   K.$$('[data-watch]').forEach((b) => b.onclick = async () => {
     const on = !b.classList.contains('on'); b.classList.toggle('on', on);

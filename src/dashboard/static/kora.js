@@ -10,6 +10,12 @@
   K.icons = () => window.lucide && window.lucide.createIcons();
   K.icons();
 
+  // ---- phone menu (sidebar as a drawer)
+  const sb = $('.sidebar'), scrim = $('#scrim');
+  const menu = (on) => { if (sb) sb.classList.toggle('open', on); if (scrim) scrim.classList.toggle('open', on); };
+  ['#menu-btn', '#tab-more'].forEach((s) => { const b = $(s); if (b) b.onclick = () => menu(!sb.classList.contains('open')); });
+  if (scrim) scrim.onclick = () => menu(false);
+
   // ---- clock
   const clock = $('#clock');
   const tickClock = () => clock && (clock.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));

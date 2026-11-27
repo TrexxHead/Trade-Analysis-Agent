@@ -78,7 +78,9 @@ def feed_status(conn) -> dict:
     online = age < FEED_STALE_SECONDS
     ctl = kv_get(conn, "agent_control") or {"state": "RUNNING"}
     return {"online": online, "source": hb.get("source"), "state": ctl["state"] if online else "OFFLINE",
-            "hb": hb, "age": age, "sim": hb.get("source") == "sim", "latency": hb.get("latency_ms")}
+            "hb": hb, "age": age, "sim": hb.get("source") == "sim", "latency": hb.get("latency_ms"),
+            "feed_ok": hb.get("feed_ok", True), "feed_error": hb.get("feed_error"),
+            "broker_connected": hb.get("broker_connected", True)}
 
 
 def account_state(conn, trades: list[dict] | None = None) -> dict:
@@ -348,6 +350,7 @@ def instrument_rows(conn) -> list[dict]:
     settings = get_settings(conn)
     from src.analyst.config import watchlist_codes
     watched = watchlist_codes(settings)
+    specs = kv_get(conn, "symbol_specs", {}) or {}
     rows = []
     for m in instruments():
         rep = reps.get(m["code"])
@@ -361,6 +364,8 @@ def instrument_rows(conn) -> list[dict]:
             **m, "rep": rep, "price": px, "price_s": price(px, m["digits"]), "chg": chg,
             "chg_s": pct(chg, 2, True) if chg is not None else "—", "chg_t": tone(chg),
             "spread": (q["ask"] - q["bid"]) if q.get("ask") and q.get("bid") else None,
+            "spread_pts": round((q["ask"] - q["bid"]) / specs[m["code"]]["point"])
+                          if q.get("ask") and q.get("bid") and (specs.get(m["code"]) or {}).get("point") else None,
             "atr": (rep or {}).get("atr"), "vol": (rep or {}).get("atr_pct"),
             "trend": min(100, (rep or {}).get("adx") or 0) if rep else None,
             "score": (rep or {}).get("opportunity"), "best": best,

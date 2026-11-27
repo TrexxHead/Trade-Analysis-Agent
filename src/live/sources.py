@@ -196,16 +196,36 @@ class MT5Source:
 
     def snapshot(self) -> dict:
         from src.ingest import mt5_local
+        h = mt5_local.health()  # also re-initialises the link if the terminal was restarted
+        if not h["terminal"]:
+            raise RuntimeError(h.get("error") or "The MT5 terminal isn't responding")
         t0 = time.perf_counter()
+        today = datetime.now(timezone.utc).date().isoformat()
+        if getattr(self, "_specs_day", None) != today:  # refresh specs + day opens once a day (and at start)
+            self.specs, self.day_opens = {}, {}
+            for m in self.instruments:
+                try:
+                    mt5_local.ensure_symbol(m["symbol"])
+                    self.specs[m["code"]] = mt5_local.symbol_spec(m["symbol"])
+                    self.day_opens[m["code"]] = mt5_local.day_open(m["symbol"])
+                    self.errors.pop(m["code"], None)
+                except Exception as e:
+                    self.errors[m["code"]] = str(e)
+            self._specs_day = today
         quotes = {}
         for m in self.instruments:
             if m["code"] in self.errors and "not found" in self.errors[m["code"]]:
                 continue
             q = mt5_local.tick(m["symbol"])
             if q:
+                q["day_open"] = self.day_opens.get(m["code"])
+                spec = self.specs.get(m["code"]) or {}
+                if spec.get("point") and q.get("ask"):
+                    q["spread_points"] = round((q["ask"] - q["bid"]) / spec["point"])
                 quotes[m["code"]] = q
         self.latency_ms = (time.perf_counter() - t0) * 1000
-        return {"quotes": quotes, "account": mt5_local.account(), "positions": mt5_local.positions(self.by_symbol)}
+        return {"quotes": quotes, "account": mt5_local.account(), "positions": mt5_local.positions(self.by_symbol),
+                "orders": mt5_local.orders(self.by_symbol), "specs": self.specs, "health": h}
 
     async def candles(self, symbol: str, tf: str, count: int, end: datetime | None = None) -> list[dict]:
         from src.ingest import mt5_local
@@ -215,7 +235,10 @@ class MT5Source:
         pass
 
 
-DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id={app_id}"
+# Deriv's current public endpoint needs no app_id or token; the legacy host
+# (often HTTP 520 now) is kept as a fallback. Override with DERIV_WS_URL.
+DERIV_WS_URLS = ["wss://api.derivws.com/trading/v1/options/ws/public",
+                 "wss://ws.derivws.com/websockets/v3?app_id={app_id}"]
 DERIV_GRAN = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400}
 
 
@@ -242,8 +265,17 @@ class DerivSource:
 
     async def _connect(self):
         import websockets
-        url = DERIV_WS.format(app_id=os.environ.get("DERIV_APP_ID") or "1089")
-        self.ws = await websockets.connect(url, open_timeout=20, ping_interval=25, max_size=2 ** 23)
+        urls = [os.environ["DERIV_WS_URL"]] if os.environ.get("DERIV_WS_URL") else DERIV_WS_URLS
+        last = None
+        for url in urls:
+            try:
+                self.ws = await websockets.connect(url.format(app_id=os.environ.get("DERIV_APP_ID") or "1089"),
+                                                   open_timeout=20, ping_interval=25, max_size=2 ** 23)
+                break
+            except Exception as e:
+                last = e
+        else:
+            raise RuntimeError(f"Couldn't reach Deriv's public feed: {last}")
         self.reader = asyncio.create_task(self._read())
         for m in self.instruments:
             await self.ws.send(json.dumps({"ticks": m["deriv_symbol"], "subscribe": 1}))

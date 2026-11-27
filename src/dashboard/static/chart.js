@@ -62,20 +62,48 @@
   class Chart {
     constructor(canvas, opts = {}) {
       this.c = canvas; this.opts = opts; this.data = null; this.inds = []; this.show = { levels: true, kora: true, trades: true };
-      this.view = null; this.mouse = null; this.drag = null;
+      this.view = null; this.mouse = null; this.drag = null; this.drawings = []; this.mode = null; this.pending = null;
       canvas.addEventListener('mousemove', (e) => {
         const r = canvas.getBoundingClientRect(); this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
-        if (this.drag) { const dx = this.mouse.x - this.drag.x, cw = this._cw || 6; this.view.end = Math.min(this.data.candles.length, Math.max(this.view.count, this.drag.end - Math.round(dx / cw))); }
+        if (this.drag && !this.mode) { const dx = this.mouse.x - this.drag.x, cw = this._cw || 6; this.view.end = Math.min(this.data.candles.length, Math.max(this.view.count, this.drag.end - Math.round(dx / cw))); }
         this.draw();
       });
       canvas.addEventListener('mouseleave', () => { this.mouse = null; this.drag = null; this.draw(); });
-      canvas.addEventListener('mousedown', (e) => { this.drag = { x: e.offsetX, end: this.view.end }; canvas.style.cursor = 'grabbing'; });
-      window.addEventListener('mouseup', () => { this.drag = null; canvas.style.cursor = 'crosshair'; });
+      canvas.addEventListener('mousedown', (e) => { this.drag = { x: e.offsetX, y: e.offsetY, end: this.view.end }; if (!this.mode) canvas.style.cursor = 'grabbing'; });
+      window.addEventListener('mouseup', (e) => {
+        const d = this.drag; this.drag = null; canvas.style.cursor = 'crosshair';
+        if (!d || !this.mode || e.target !== canvas) return;
+        if (Math.abs(e.offsetX - d.x) > 4 || Math.abs(e.offsetY - d.y) > 4) return;
+        const pt = this.pointAt(e.offsetX, e.offsetY); if (!pt) return;
+        if (this.mode === 'h') { this.drawings.push({ type: 'h', price: pt.price, color: '#ffc34d' }); this.mode = null; this.changed(); }
+        else if (this.mode === 't') {
+          if (!this.pending) { this.pending = pt; }
+          else { this.drawings.push({ type: 't', t1: this.pending.time, p1: this.pending.price, t2: pt.time, p2: pt.price, color: '#5ac8fa' }); this.pending = null; this.mode = null; this.changed(); }
+        }
+        this.draw();
+      });
       canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (!this.view) return; const n = this.data.candles.length;
         this.view.count = Math.round(Math.min(n, Math.max(30, this.view.count * (e.deltaY > 0 ? 1.12 : 0.89)))); this.view.end = Math.max(this.view.count, this.view.end); this.draw(); }, { passive: false });
       canvas.addEventListener('dblclick', () => { this.resetView(); this.draw(); });
+      // touch: one finger pans, two fingers pinch-zoom
+      let t0 = null;
+      canvas.addEventListener('touchstart', (e) => { if (!this.view) return;
+        t0 = e.touches.length === 2 ? { pinch: Math.abs(e.touches[0].clientX - e.touches[1].clientX), count: this.view.count }
+                                    : { x: e.touches[0].clientX, end: this.view.end }; }, { passive: true });
+      canvas.addEventListener('touchmove', (e) => { if (!t0 || !this.view) return; e.preventDefault(); const n = this.data.candles.length;
+        if (e.touches.length === 2 && t0.pinch) { const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX) || 1;
+          this.view.count = Math.round(Math.min(n, Math.max(30, t0.count * (t0.pinch / d)))); this.view.end = Math.max(this.view.count, this.view.end); }
+        else if (t0.x != null) { const dx = e.touches[0].clientX - t0.x; this.view.end = Math.min(n, Math.max(this.view.count, t0.end - Math.round(dx / (this._cw || 6)))); }
+        this.draw(); }, { passive: false });
+      canvas.addEventListener('touchend', () => { t0 = null; });
       window.addEventListener('resize', () => this.draw());
     }
+    pointAt(px, py) {
+      const s = this._scale; if (!s || py > s.mainH) return null;
+      const i = Math.min(s.e - 1, s.s + Math.max(0, Math.floor(px / s.cw)));
+      return { time: this.data.candles[i].time, price: s.mn + (s.mx - s.mn) * (1 - (py - 8) / (s.mainH - 16)) };
+    }
+    changed() { if (this.opts.onDrawings) this.opts.onDrawings(this.drawings); }
     resetView() { const n = this.data ? this.data.candles.length : 0; this.view = { end: n, count: Math.min(n, 130) }; }
     set(data) { const first = !this.data || this.data.code !== data.code || this.data.tf !== data.tf; this.data = data; if (first || !this.view) this.resetView(); this.compute(); this.draw(); }
     setIndicators(list) { this.inds = list.map((x) => ({ ...x })); this.compute(); this.draw(); }
@@ -107,6 +135,7 @@
       ovs.forEach((o) => { if (Math.abs(o.price - (mn + mx) / 2) < span0 * 2.5) { mn = Math.min(mn, o.price); mx = Math.max(mx, o.price); } });
       const rg = mx - mn || 1; mn -= rg * 0.05; mx += rg * 0.05;
       const Y = (v) => 8 + (mainH - 16) * (1 - (v - mn) / (mx - mn));
+      this._scale = { s, e, cw, mn, mx, mainH };
       x.font = FONT; x.textAlign = 'left';
       for (let i = 0; i <= 6; i++) { const v = mn + ((mx - mn) * i) / 6, y = Y(v); x.strokeStyle = C.grid; x.beginPath(); x.moveTo(0, y); x.lineTo(W - padR, y); x.stroke(); x.fillStyle = C.axis; x.fillText(K.fm(v, dd), W - padR + 8, y + 4); }
       // time axis
@@ -122,6 +151,13 @@
       if (this.show.levels) (d.levels || []).forEach((lv) => { const y = Y(lv.price); if (y < 0 || y > mainH) return;
         x.fillStyle = lv.kind === 'support' ? 'rgba(155,211,90,.08)' : 'rgba(255,107,97,.08)'; x.fillRect(0, y - 3, W - padR, 6);
         x.fillStyle = C.axis; x.fillText(`${lv.tf} ${lv.kind === 'support' ? 'S' : 'R'}`, W - padR - 44, y - 6); });
+      // Kora plan zones: entry->TP1 reward and entry->stop risk, on the right of the chart
+      if (this.show.kora && d.plan && d.plan.entry != null) {
+        const zx = (W - padR) * 0.72, zw = (W - padR) - zx, ye = Y(d.plan.entry), yt = Y(d.plan.tp1), ys = Y(d.plan.stop);
+        x.fillStyle = 'rgba(155,211,90,.10)'; x.fillRect(zx, Math.min(ye, yt), zw, Math.abs(yt - ye));
+        x.fillStyle = 'rgba(255,107,97,.10)'; x.fillRect(zx, Math.min(ye, ys), zw, Math.abs(ys - ye));
+        x.fillStyle = 'rgba(235,235,245,.55)'; x.fillText(`${d.plan.rr1}R`, zx + 8, Math.min(ye, yt) + 14);
+      }
       // candles
       data.forEach((k, j) => { const cx = j * cw + cw / 2, up = k.close >= k.open, col = up ? C.g : C.r;
         x.strokeStyle = col; x.beginPath(); x.moveTo(cx, Y(k.high)); x.lineTo(cx, Y(k.low)); x.stroke();
@@ -155,6 +191,20 @@
       for (const t of tags) { const label = `${t.o.label} ${K.fm(t.o.price, dd)}`, w = x.measureText(label).width + 14, lx = W - padR - w - 6;
         x.save(); x.globalAlpha = 0.92; x.fillStyle = '#151817'; x.strokeStyle = t.o.color; x.beginPath(); x.roundRect(lx, t.ty - 8, w, 16, 5); x.fill(); x.stroke(); x.restore();
         x.fillStyle = t.o.color; x.fillText(label, lx + 7, t.ty + 4); }
+      // user drawings
+      const tIdx = (t) => { let lo = 0, hi = all.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (all[m].time <= t) lo = m; else hi = m - 1; } return lo; };
+      for (const dr of this.drawings) {
+        x.save(); x.strokeStyle = dr.color; x.lineWidth = 1.6;
+        if (dr.type === 'h') { const y = Y(dr.price); x.beginPath(); x.moveTo(0, y); x.lineTo(W - padR, y); x.stroke(); x.fillStyle = dr.color; x.fillText(K.fm(dr.price, dd), 10, y - 5); }
+        else if (dr.type === 't') {
+          const x1 = X(tIdx(dr.t1)), x2 = X(tIdx(dr.t2)), y1 = Y(dr.p1), y2 = Y(dr.p2), slope = (y2 - y1) / ((x2 - x1) || 1);
+          const xe = W - padR; x.beginPath(); x.moveTo(x1, y1); x.lineTo(xe, y1 + slope * (xe - x1)); x.stroke();
+          x.fillStyle = dr.color; [[x1, y1], [x2, y2]].forEach(([a, b]) => { x.beginPath(); x.arc(a, b, 3, 0, Math.PI * 2); x.fill(); });
+        }
+        x.restore();
+      }
+      if (this.pending && this.mouse) { const p = this.pending, x1 = X(tIdx(p.time)), y1 = Y(p.price);
+        x.save(); x.strokeStyle = '#5ac8fa'; x.setLineDash([4, 3]); x.beginPath(); x.moveTo(x1, y1); x.lineTo(this.mouse.x, this.mouse.y); x.stroke(); x.restore(); }
       // last price
       const last = all[all.length - 1].close, ly = Y(last);
       if (ly > 0 && ly < mainH) { x.save(); x.strokeStyle = 'rgba(255,195,77,.6)'; x.setLineDash([3, 4]); x.beginPath(); x.moveTo(0, ly); x.lineTo(W - padR, ly); x.stroke(); x.restore();

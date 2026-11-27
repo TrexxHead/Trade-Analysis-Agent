@@ -14,16 +14,19 @@ def fake_mt5_module():
     for i, tf in enumerate(["M1", "M5", "M15", "M30", "H1", "H4", "D1"]):
         setattr(m, f"TIMEFRAME_{tf}", i)
     Tick = namedtuple("Tick", "time bid ask")
-    Info = namedtuple("Info", "trade_tick_size trade_tick_value trade_tick_value_loss digits")
+    Info = namedtuple("Info", "trade_tick_size trade_tick_value trade_tick_value_loss digits point volume_min volume_step trade_contract_size spread")
+    Order = namedtuple("Order", "ticket type symbol volume_current price_open sl tp time_setup comment")
+    Term = namedtuple("Term", "connected")
     Acc = namedtuple("Acc", "login trade_mode balance equity margin margin_free leverage currency server company name")
     Pos = namedtuple("Pos", "ticket time type volume price_open sl tp price_current swap profit symbol comment")
     Deal = namedtuple("Deal", "ticket time type entry position_id volume price commission swap profit symbol")
     m.initialize = lambda **kw: True
-    m.terminal_info = lambda: object()
+    m.terminal_info = lambda: Term(True)
     m.last_error = lambda: (1, "ok")
     m.symbol_select = lambda s, on: s != "MISSING"
     m.symbol_info_tick = lambda s: Tick(1764000000, 3342.4, 3342.6)
-    m.symbol_info = lambda s: Info(0.01, 1.0, 1.0, 2)
+    m.symbol_info = lambda s: Info(0.01, 1.0, 1.0, 2, 0.01, 0.01, 0.01, 100, 20)
+    m.orders_get = lambda: [Order(55, 2, "XAUUSD", 0.02, 3300.0, 3290.0, 3330.0, 1764000000, "")]
     rates = [{"time": 1764000000 + 3600 * k, "open": 1.0 + k, "high": 2.0 + k, "low": 0.5 + k, "close": 1.5 + k, "tick_volume": 10} for k in range(5)]
     m.copy_rates_from_pos = lambda s, tf, pos, n: rates[-n:]
     m.copy_rates_from = lambda s, tf, end, n: rates[-n:]
@@ -52,7 +55,11 @@ def test_mt5_snapshot_candles_and_trades(mt5):
     p = snap["positions"][0]
     assert p["code"] == "XAUUSD" and p["direction"] == "buy"
     assert p["risk_amount"] == pytest.approx(10 / 0.01 * 1.0 * 0.05)  # $10 to stop * 100 ticks/$ * 0.05 lots
-    assert snap["quotes"]["XAUUSD"]["price"] == pytest.approx(3342.5)
+    assert snap["quotes"]["XAUUSD"]["price"] == pytest.approx(3342.4)  # bid, like MT5
+    assert snap["quotes"]["XAUUSD"]["spread_points"] == 20
+    assert snap["specs"]["XAUUSD"]["digits"] == 2 and snap["health"]["broker"] is True
+    o = snap["orders"][0]
+    assert o["direction"] == "buy" and o["order_type"] == "limit" and o["price"] == 3300.0
     c = asyncio.run(src.candles("XAUUSD", "H1", 3))
     assert len(c) == 3 and c[-1]["close"] == 5.5 and c[0]["time"].endswith("+00:00")
     trades = mt5.fetch_trades(None, None)

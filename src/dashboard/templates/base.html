@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kora">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 {% set page = PAGES.get(active) %}
 {% set subp = SUBPAGES.get(sub) if sub else None %}
 <title>{% block title %}{{ (subp or page or ['Kora Terminal'])[0] }} · Kora Terminal{% endblock %}</title>
@@ -82,7 +88,8 @@
   <div class="main-col">
     {% set title_pair = subp or page or ('Kora Terminal', '') %}
     <header class="topbar">
-      <div style="min-width:150px">
+      <button class="menu-btn" id="menu-btn" aria-label="Menu"><i data-lucide="menu"></i></button>
+      <div style="min-width:0">
         <h1>{% block page_title %}{{ title_pair[0] }}{% endblock %}</h1>
         <p class="sub">{% block page_sub %}{{ title_pair[1] }}{% endblock %}</p>
       </div>
@@ -105,9 +112,11 @@
         </a>
         <span class="clock" id="clock"></span>
         <a href="/kora#log" class="bell" title="Kora decision log"><i data-lucide="bell"></i><span class="n" id="bell-n"></span></a>
-        <div class="avdisc">{{ settings.user_initial[:1] }}</div>
+        {% if signed_in %}<a href="/logout" class="avdisc" title="Sign out">{{ settings.user_initial[:1] }}</a>{% else %}<div class="avdisc">{{ settings.user_initial[:1] }}</div>{% endif %}
       </div>
     </header>
+    {% if feed.online and not feed.feed_ok %}<div class="sim-banner" style="background:rgba(255,107,97,.1);border-color:rgba(255,107,97,.25);color:var(--r)">{{ 'MT5' if feed.source == 'mt5' else 'The data feed' }} isn't responding: {{ feed.feed_error }}. Kora retries every few seconds; check the MT5 app is open and logged in. Figures on screen may be stale.</div>
+    {% elif feed.online and not feed.broker_connected %}<div class="sim-banner">MT5 is open but not connected to the Deriv server, so prices aren't updating. Check your internet connection and MT5 login.</div>{% endif %}
     {% if feed.sim %}<div class="sim-banner">SIMULATED DATA — the Kora service is running with KORA_DATA_SOURCE=sim. Prices, positions and account figures are not real.</div>{% endif %}
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -119,6 +128,13 @@
     </main>
   </div>
 </div>
+<div class="scrim" id="scrim"></div>
+<nav class="tabbar" aria-label="Main">
+  {% for key, icon, label in [('dashboard','layout-dashboard','Home'),('charts','candlestick-chart','Charts'),('kora','bot','Kora'),('positions','layers','Positions')] %}
+  <a href="{{ PAGES[key][2] }}" class="{{ 'on' if active == key }}"><i data-lucide="{{ icon }}"></i>{{ label }}</a>
+  {% endfor %}
+  <button id="tab-more"><i data-lucide="menu"></i>More</button>
+</nav>
 <div class="toast" id="toast"></div>
 <script>
   window.KORA = {

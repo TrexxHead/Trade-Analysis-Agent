@@ -53,7 +53,21 @@ class KoraService:
 
     # ------------------------------------------------------------------ feed
     def write_feed(self):
-        snap = self.source.snapshot()
+        try:
+            snap = self.source.snapshot()
+        except Exception as e:
+            # keep the heartbeat alive so the hub shows *why* data stopped, and retry next tick
+            kv_set(self.conn, "feed_error", {"at": now().isoformat(), "error": str(e)})
+            hb = kv_get(self.conn, "heartbeat") or {}
+            kv_set(self.conn, "heartbeat", {**hb, "ts": now().isoformat(), "source": self.source.name,
+                                            "feed_ok": False, "feed_error": str(e)})
+            return
+        if kv_get(self.conn, "feed_error"):
+            self.conn.execute("DELETE FROM kv WHERE key = 'feed_error'")
+            self.conn.commit()
+        if snap.get("specs"):
+            kv_set(self.conn, "symbol_specs", snap["specs"])
+        kv_set(self.conn, "orders", snap.get("orders", []))
         q = snap["quotes"]
         for code, quote in q.items():
             if code in self.day_open and not quote.get("day_open"):
@@ -68,7 +82,8 @@ class KoraService:
             "started_at": self.started_at.isoformat(), "state": state["state"],
             "last_cycle": self.last_cycle.isoformat() if self.last_cycle else None,
             "next_cycle": self.next_cycle_at().isoformat() if state["state"] != "STOPPED" else None,
-            "errors": self.source.errors, "pid": os.getpid(),
+            "errors": self.source.errors, "pid": os.getpid(), "feed_ok": True,
+            "broker_connected": (snap.get("health") or {}).get("broker", True),
         })
 
     def track_equity(self, account: dict):
@@ -130,8 +145,10 @@ class KoraService:
         previous = latest_analyses(self.conn)
         last_dec = {d["code"]: d for d in reversed(list_decisions(self.conn, limit=200)) if d["code"]}
         reports, n_setups, errors = {}, 0, []
+        setups_off = settings.get("setups_off") or {}
         for m in active:
             code = m["code"]
+            m = {**m, "setups_off": setups_off.get(code, [])}
             try:
                 fund = instrument_fundamentals(m, self.calendar, reads_by_code)
                 live = (quotes.get(code) or {}).get("price")

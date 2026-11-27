@@ -302,7 +302,10 @@ DETECTORS = [trend_pullback, breakout_retest, range_reversion, liquidity_sweep, 
 
 def detect_all(f: Features, i: int, htf: dict, meta: dict) -> list[dict]:
     out = []
+    off = set(meta.get("setups_off") or ())
     for det in DETECTORS:
+        if det.__name__ in off:
+            continue
         try:
             cand = det(f, i, htf, meta)
         except (TypeError, ZeroDivisionError, IndexError):

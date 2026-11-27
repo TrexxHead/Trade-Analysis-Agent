@@ -14,18 +14,18 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 ---
 
 ## 1. Data and connectivity
-- [ ] **P1** Read price digits, tick size and tick value from MT5 `symbol_info` instead of `instruments.yaml`, so prices display with the broker's exact precision (XAGUSD and Boom/Crash currently show extra decimals)
-- [ ] **P1** Show the last traded **bid** (or bid/ask) rather than the bid/ask midpoint, matching what MT5 shows
-- [ ] **P1** Fix the Deriv public feed fallback (HTTP 520 from `ws.derivws.com` with the shared app_id 1089): register your own free app_id at api.deriv.com and/or update to Deriv's current endpoint
-- [ ] **P1** Auto-reconnect to MT5 if the terminal restarts or loses connection, and show a "MT5 disconnected" banner rather than silently stale data
-- [ ] **P2** Show live spread per instrument (bid/ask) on the Scanner and in setup filters (skip setups when spread > N× normal)
+- [x] **P1** Read price digits, tick size and tick value from MT5 `symbol_info` instead of `instruments.yaml`, so prices display with the broker's exact precision (XAGUSD and Boom/Crash currently show extra decimals)
+- [x] **P1** Show the last traded **bid** (or bid/ask) rather than the bid/ask midpoint, matching what MT5 shows
+- [x] **P1** Fix the Deriv public feed fallback (HTTP 520 from `ws.derivws.com` with the shared app_id 1089): register your own free app_id at api.deriv.com and/or update to Deriv's current endpoint
+- [x] **P1** Auto-reconnect to MT5 if the terminal restarts or loses connection, and show a "MT5 disconnected" banner rather than silently stale data
+- [x] **P2** Show live spread per instrument (bid/ask) on the Scanner and in setup filters (skip setups when spread > N× normal)
 - [ ] **P2** Detect the MT5 server timezone offset and normalise bar and deal times to UTC (assumed GMT today)
 - [ ] **P2** Cache candles locally (SQLite) so charts and backtests load instantly and use fewer terminal calls
 - [ ] **P3** Support several MT5 accounts (demo + real) with an account switcher
 
 ## 2. Kora analyst quality
-- [ ] **P1** Run `train_kora.py` on real MT5 history for all five focus instruments; review per-setup expectancy and disable setups that are negative on an instrument
-- [ ] **P1** Per-instrument setup on/off switches in Settings (e.g. no range reversion on Boom/Crash)
+- [ ] **P1** Run `train_kora.py` on real MT5 history (done once on Deriv's ~83 days of H1; re-run on MT5 for longer history) for all five focus instruments; review per-setup expectancy and disable setups that are negative on an instrument
+- [x] **P1** Per-instrument setup on/off switches in Settings (e.g. no range reversion on Boom/Crash)
 - [ ] **P2** Boom/Crash-specific logic: spike detection, ticks-since-last-spike, spike-direction-only plans
 - [ ] **P2** Multi-timeframe triggers: an H1 plan waits for an M15 confirmation candle and alerts again when it triggers
 - [ ] **P2** Walk-forward calibration (train on older data, validate on recent) with a warning when live results drift from the backtest
@@ -35,8 +35,8 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [ ] **P3** Post-release macro surprises (needs a calendar source with *actual* figures)
 
 ## 3. Charts
-- [ ] **P1** Drawing tools: horizontal line, trend line, rectangle zone, saved per symbol
-- [ ] **P1** Shade Kora's plan as an entry→TP and entry→SL zone, not just lines
+- [x] **P1** Drawing tools: horizontal line, trend line, rectangle zone, saved per symbol
+- [x] **P1** Shade Kora's plan as an entry→TP and entry→SL zone, not just lines
 - [ ] **P2** Live-updating last candle from MT5 ticks (today: live close only, new bars on refresh)
 - [ ] **P2** Load more history when panning left (infinite scroll)
 - [ ] **P2** Multi-chart layout (2×2) for the focus watchlist
@@ -52,15 +52,15 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [ ] **P3** Greeting and a daily "Kora summary" card at the top
 
 ## 5. Positions and account
-- [ ] **P1** Pending orders tab (limit/stop orders from MT5 `orders_get`)
+- [x] **P1** Pending orders tab (limit/stop orders from MT5 `orders_get`)
 - [ ] **P2** Per-position mini chart with entry/SL/TP
 - [ ] **P2** Exposure per instrument in lots and notional, and correlation warning across open positions
 - [ ] **P2** Export history to CSV
 - [ ] **P3** Monthly statement view (P/L, commissions, swaps)
 
 ## 6. Journal
-- [ ] **P1** Edit setup, emotion, lesson inline on the card (no page change)
-- [ ] **P1** Auto-suggest the setup tag from Kora's matching plan at entry
+- [x] **P1** Edit setup, emotion, lesson inline on the card (no page change)
+- [x] **P1** Auto-suggest the setup tag from Kora's matching plan at entry
 - [ ] **P2** Screenshot upload or auto chart snapshot at M15 around entry
 - [ ] **P2** Weekly review page: best and worst trades, rule breaks, Kora-aligned vs discretionary results
 - [ ] **P3** Tags beyond setup/emotion (mistake type, market condition), custom tag sets
@@ -96,16 +96,16 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [ ] **P3** Monthly breakdown and longest losing streak
 
 ## 12. Design and UX
-- [ ] **P1** Phone and tablet layout: bottom tab bar, single-column cards, touch-friendly chart (pinch zoom)
+- [x] **P1** Phone and tablet layout: bottom tab bar, single-column cards, touch-friendly chart (pinch zoom)
 - [ ] **P2** Light theme option (system-aware)
 - [ ] **P2** Loading skeletons and empty states for every panel
 - [ ] **P2** Keyboard shortcuts (`g d` dashboard, `g c` charts, `/` search, `[`/`]` switch symbol)
 - [ ] **P3** Command palette (⌘K) and onboarding tour
-- [ ] **P3** Installable app (PWA) with home-screen icon
+- [x] **P3** Installable app (PWA) with home-screen icon
 
 ## 13. Access, reliability and security
 - [ ] **P1** Remote access from any device: Tailscale or Cloudflare Tunnel (see `docs/remote_access.md`)
-- [ ] **P1** Set `DASHBOARD_PASSWORD` before any remote access; proper login page with a session cookie (not just the browser popup)
+- [x] **P1** Set `DASHBOARD_PASSWORD` before any remote access; proper login page with a session cookie (not just the browser popup)
 - [ ] **P1** Auto-start Kora + hub at Windows logon (Task Scheduler: `run_kora.bat`, `run_dashboard.bat`) and keep the PC from sleeping while MT5 runs
 - [ ] **P2** Health page: service uptime, last cycle, MT5 connection, errors, log tail
 - [ ] **P2** Daily backup of `data/trades.db`

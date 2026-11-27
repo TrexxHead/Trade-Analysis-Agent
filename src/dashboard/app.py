@@ -19,7 +19,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
+import hmac
+import time
+
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 
 from src.analyst import llm, notify
 from src.analyst.config import DEFAULT_SETTINGS, by_code, get_settings, instruments, load_watchlist
@@ -36,7 +39,24 @@ BACKTESTS_DIR = ROOT / "backtests_out"
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET") or secrets.token_hex(16)
+
+
+def _secret_key() -> str:
+    """Stable across restarts so sign-ins survive a dashboard restart."""
+    if os.environ.get("FLASK_SECRET"):
+        return os.environ["FLASK_SECRET"]
+    conn = kora_connection()
+    key = kv_get(conn, "flask_secret")
+    if not key:
+        key = secrets.token_hex(32)
+        kv_set(conn, "flask_secret", key)
+    return key
+
+
+app.secret_key = _secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  PERMANENT_SESSION_LIFETIME=timedelta(days=30))
+_FAILED: dict[str, list[float]] = {}
 
 PAGES = {
     "dashboard": ("Dashboard", "Portfolio overview — live", "/", "layout-dashboard"),
@@ -59,13 +79,46 @@ SUBPAGES = {
 
 
 @app.before_request
-def _require_password():
-    if not DASHBOARD_PASSWORD:
+def _require_login():
+    """With DASHBOARD_PASSWORD set, every page needs a signed-in session."""
+    if not DASHBOARD_PASSWORD or request.endpoint in ("login", "static") or session.get("auth"):
         return None
-    auth = request.authorization
-    if not auth or auth.password != DASHBOARD_PASSWORD:
-        return Response("Password required.", 401, {"WWW-Authenticate": 'Basic realm="Kora Terminal"'})
-    return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Signed out - reload the page and sign in."}), 401
+    return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    nxt = request.values.get("next") or "/"
+    if not nxt.startswith("/") or nxt.startswith("//"):
+        nxt = "/"
+    if not DASHBOARD_PASSWORD:
+        return redirect(nxt)
+    error = None
+    ip = request.headers.get("CF-Connecting-IP") or request.remote_addr or "?"
+    recent = [t for t in _FAILED.get(ip, []) if time.time() - t < 900]
+    _FAILED[ip] = recent
+    if request.method == "POST":
+        if len(recent) >= 5:
+            error = "Too many attempts. Try again in 15 minutes."
+        elif hmac.compare_digest((request.form.get("password") or "").encode(), DASHBOARD_PASSWORD.encode()):
+            session.clear()
+            session.permanent = True
+            session["auth"] = True
+            _FAILED.pop(ip, None)
+            return redirect(nxt)
+        else:
+            _FAILED[ip].append(time.time())
+            time.sleep(1)
+            error = "That password isn't right."
+    return render_template("login.html", next=nxt, error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 def _conn():
@@ -90,6 +143,7 @@ def _shell():
         "settings": settings, "search_index": search, "n_positions": len(acct["positions"]),
         "mood": "content" if (acct["day_pl"] or 0) >= 0 else "concerned",
         "last_decision_id": last_dec[0]["id"] if last_dec else 0,
+        "signed_in": bool(DASHBOARD_PASSWORD and session.get("auth")),
     }
 
 
@@ -205,7 +259,8 @@ def positions():
     return render_template("positions.html", active="positions", acct=acct, pos=pos, risk=risk, tab=tab, hist=hist[:300],
                            hist_stats=D.quant_stats(list(reversed(hist)), None) if hist else {}, hsym=hsym, hdays=hdays,
                            symbols=sorted({t["symbol"] for t in trades}), sym_rows=sym_rows, margin_level=margin_level,
-                           sync=kv_get(conn, "history_sync"), a=a)
+                           sync=kv_get(conn, "history_sync"), a=a, orders=kv_get(conn, "orders", []) or [],
+                           quotes=get_quotes(conn), cat=by_code())
 
 
 @app.route("/risk")
@@ -257,7 +312,7 @@ def journal():
         if flt == "unreviewed" and t.get("notes"):
             continue
         code = s2c.get(t["symbol"])
-        note, align = None, None
+        note, align, suggest = None, None, None
         if code:
             opened = D.parse_dt(t["open_time"])
             near = analyses_between(conn, code, (opened - timedelta(hours=6)).isoformat(), opened.isoformat())
@@ -267,6 +322,7 @@ def journal():
                 cand = next((c for c in rep["candidates"] if c["direction"] == want), None)
                 if cand:
                     align = "aligned"
+                    suggest = cand["setup_name"]
                     note = f"Aligned with Kora: {cand['setup_name']} {want} was live at entry ({cand['confidence']}% confidence, {cand['levels_text']})."
                 elif rep["bias"] != "Neutral" and (rep["bias"] == "Bullish") != (want == "long"):
                     align = "against"
@@ -279,7 +335,7 @@ def journal():
         if fl:
             note = (note + " " if note else "") + "Flagged: " + "; ".join(f["detail"] or f["rule_id"] for f in fl) + "."
         r = t["pnl"] / t["risk_amount"] if t.get("risk_amount") else None
-        entries.append({**t, "code": code or t["symbol"], "flags": fl, "chart": charts.get(t["id"]), "kora_note": note, "r": r,
+        entries.append({**t, "code": code or t["symbol"], "flags": fl, "suggest": suggest, "chart": charts.get(t["id"]), "kora_note": note, "r": r,
                         "dur": D.duration(t["open_time"], D.parse_dt(t["close_time"])),
                         "reviewed": bool(t.get("notes"))})
     shown = entries[:120]
@@ -347,7 +403,15 @@ def settings_page():
         keys.append({"env": env, "label": label, "desc": desc, "set": bool(v),
                      "masked": ("•" * 16 + v[-4:]) if len(v) > 8 else ("set" if v else "not set")})
     from src.analyst.config import watchlist_codes
+    from src.analyst.setups import SETUP_NAMES
+    exp: dict = {}
+    for (code, setup, _dir), r in get_setup_stats(conn).items():
+        e = exp.setdefault((code, setup), {"n": 0, "sum": 0.0})
+        e["n"] += r["n"]
+        e["sum"] += r["expectancy"] * r["n"]
+    setup_exp = {f"{c}:{s}": {"n": e["n"], "exp": e["sum"] / e["n"]} for (c, s), e in exp.items() if e["n"]}
     return render_template("settings.html", active="settings", keys=keys, channels=notify.channels(),
+                           setup_names=SETUP_NAMES, setup_exp=setup_exp,
                            watched=watchlist_codes(get_settings(conn)),
                            instruments=instruments(), defaults=DEFAULT_SETTINGS, llm_ok=llm.available(),
                            deriv_ok=bool(os.environ.get("DERIV_API_TOKEN")),
@@ -535,7 +599,8 @@ def api_chart(code):
     if rep:
         if rep["candidates"]:
             c = rep["candidates"][0]
-            plan = {"title": c["title"], "confidence": c["confidence"], "grade": c["grade"], "levels": c["levels_text"]}
+            plan = {"title": c["title"], "confidence": c["confidence"], "grade": c["grade"], "levels": c["levels_text"],
+                    "entry": c["entry"], "stop": c["stop"], "tp1": c["tp1"], "rr1": c["rr1"]}
             for v, lab, col in ((c["entry"], "KORA ENTRY", "#29abe2"), (c["stop"], "KORA SL", "#e0655f"),
                                 (c["tp1"], "KORA TP1", "#93c93f"), (c["tp2"], "KORA TP2", "#93c93f")):
                 overlays.append({"price": v, "label": lab, "color": col, "dash": True, "kora": True})
@@ -546,6 +611,20 @@ def api_chart(code):
     return jsonify({"code": code, "name": meta["name"], "digits": meta["digits"], "tf": tf, "trades": trades,
                     "candles": candles, "overlays": overlays, "levels": levels, "plan": plan,
                     "bias": rep["bias"] if rep else None})
+
+
+@app.route("/api/drawings", methods=["GET", "POST"])
+def api_drawings():
+    conn = _conn()
+    store = kv_get(conn, "drawings", {}) or {}
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        code = (body.get("code") or "").upper()
+        if code in by_code():
+            store[code] = [d for d in (body.get("drawings") or [])[:100] if d.get("type") in ("h", "t")]
+            kv_set(conn, "drawings", store)
+        return jsonify({"ok": True})
+    return jsonify({"drawings": store.get((request.args.get("code") or "").upper(), [])})
 
 
 @app.route("/api/chart-templates", methods=["GET", "POST"])
@@ -628,6 +707,9 @@ def api_settings():
             cur.setdefault("notify", {}).update({kk: bool(vv) for kk, vv in v.items()})
         elif k in ("interval_minutes", "alert_threshold"):
             cur[k] = max(1 if k == "interval_minutes" else 0, min(240 if k == "interval_minutes" else 100, int(v)))
+        elif k == "setups_off" and isinstance(v, dict):
+            from src.analyst.setups import SETUP_NAMES
+            cur[k] = {c: [x for x in lst if x in SETUP_NAMES] for c, lst in v.items() if c in by_code()}
         elif k == "watchlist":
             cur[k] = [c for c in v if c in by_code()]
         else:
@@ -671,6 +753,26 @@ def api_watchlist():
     cur["watchlist"] = wl
     kv_set(conn, "settings", cur)
     return jsonify({"ok": True, "watchlist": wl})
+
+
+@app.route("/api/annotate", methods=["POST"])
+def api_annotate():
+    """Inline journal edits: setup, emotion, notes, planned risk."""
+    body = request.get_json(force=True) or {}
+    tid = body.get("trade_id")
+    conn = _conn()
+    t = get_trade(conn, tid) if tid else None
+    if not t:
+        return jsonify({"ok": False, "message": "Trade not found."}), 404
+    risk = body.get("risk_amount", t.get("risk_amount"))
+    try:
+        risk = float(risk) if risk not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "Risk must be a number."}), 400
+    upsert_annotation(conn, tid, setup=(body.get("setup", t.get("setup")) or None),
+                      emotion=(body.get("emotion", t.get("emotion")) or None),
+                      notes=(body.get("notes", t.get("notes")) or None), risk_amount=risk)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/agent", methods=["POST"])

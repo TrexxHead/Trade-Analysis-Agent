@@ -98,7 +98,54 @@ def tick(symbol: str) -> dict | None:
     t = mt5.symbol_info_tick(symbol)
     if t is None or not t.bid:
         return None
-    return {"bid": t.bid, "ask": t.ask, "price": (t.bid + t.ask) / 2, "time": _iso(t.time)}
+    # MT5 charts and Market Watch show the bid, so the hub does too
+    return {"bid": t.bid, "ask": t.ask, "price": t.bid, "time": _iso(t.time)}
+
+
+def symbol_spec(symbol: str) -> dict | None:
+    """Broker's own precision and contract details for a symbol."""
+    mt5 = connect()
+    i = mt5.symbol_info(symbol)
+    if i is None:
+        return None
+    tick_value = getattr(i, "trade_tick_value_loss", 0) or getattr(i, "trade_tick_value", 0)
+    return {"digits": int(i.digits), "point": getattr(i, "point", None), "tick_size": getattr(i, "trade_tick_size", None),
+            "tick_value": tick_value, "volume_min": getattr(i, "volume_min", None), "volume_step": getattr(i, "volume_step", None),
+            "contract_size": getattr(i, "trade_contract_size", None), "spread_points": getattr(i, "spread", None)}
+
+
+def day_open(symbol: str) -> float | None:
+    mt5 = connect()
+    r = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 1)
+    return float(r[0]["open"]) if r is not None and len(r) else None
+
+
+def health() -> dict:
+    """terminal = the MT5 app answers; broker = it is logged in and connected."""
+    try:
+        mt5 = connect()
+        info = mt5.terminal_info()
+        return {"terminal": info is not None, "broker": bool(getattr(info, "connected", True)) if info else False}
+    except Exception as e:
+        return {"terminal": False, "broker": False, "error": str(e)}
+
+
+ORDER_TYPES = {2: ("buy", "limit"), 3: ("sell", "limit"), 4: ("buy", "stop"), 5: ("sell", "stop"),
+               6: ("buy", "stop limit"), 7: ("sell", "stop limit")}
+
+
+def orders(by_symbol: dict[str, dict]) -> list[dict]:
+    """Pending (not yet triggered) orders in the terminal."""
+    mt5 = connect()
+    out = []
+    for o in mt5.orders_get() or []:
+        side, kind = ORDER_TYPES.get(o.type, ("?", f"type {o.type}"))
+        meta = by_symbol.get(o.symbol, {})
+        out.append({"id": str(o.ticket), "symbol": o.symbol, "code": meta.get("code", o.symbol), "direction": side,
+                    "order_type": kind, "volume": getattr(o, "volume_current", None) or getattr(o, "volume_initial", None),
+                    "price": o.price_open, "stop_loss": o.sl or None, "take_profit": o.tp or None,
+                    "placed": _iso(o.time_setup), "comment": o.comment or None})
+    return out
 
 
 def account() -> dict:

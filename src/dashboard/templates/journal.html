@@ -29,7 +29,7 @@
   <div class="note">{% if n_match > entries|length %}Showing the latest {{ entries|length }} of {{ n_match }} matching trades. {% endif %}Trades sync automatically from your MT5 terminal. Kora's note compares each entry with its analysis at the time. Click a card to tag and review it.</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
     {% for j in entries %}
-    <a href="/trades/{{ j.id }}" class="panel" style="display:flex;flex-direction:column;gap:10px;color:inherit">
+    <div class="panel jcard" data-id="{{ j.id }}" style="display:flex;flex-direction:column;gap:10px">
       <div style="display:flex;align-items:center;gap:10px">
         <span class="mono faint" style="font-size:11px">{{ D.parse_dt(j.close_time).strftime('%a %b %d') }}</span>
         <span class="mono" style="font-weight:600;font-size:13px;color:#fff" title="{{ j.symbol }}">{{ j.code }}</span>
@@ -52,11 +52,46 @@
         <span class="tint {{ 'a' if j.flags or not j.reviewed else 'g' }}" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:10px;border-radius:999px;padding:3px 10px">{{ 'Flagged' if j.flags else 'Reviewed' if j.reviewed else 'Needs review' }}</span>
       </div>
       {% if j.kora_note %}<div style="font-size:12px;line-height:1.55;color:rgba(235,235,245,.68)"><span class="c-b" style="font-weight:600">Kora: </span>{{ j.kora_note }}</div>{% endif %}
-      <div style="font-size:11.5px;line-height:1.5;color:rgba(235,235,245,.5);border-top:1px solid rgba(255,255,255,.06);padding-top:8px"><span class="c-g" style="font-weight:600">Lesson — </span>{{ j.notes or 'Not reviewed yet. Open the trade to add your notes and lesson.' }}</div>
-    </a>
+      <div class="jview" style="font-size:12.5px;line-height:1.5;color:var(--muted);border-top:1px solid rgba(255,255,255,.06);padding-top:8px"><span class="c-g" style="font-weight:600">Lesson — </span><span class="jnotes">{{ j.notes or 'Not reviewed yet.' }}</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="obtn jedit-btn" type="button"><i data-lucide="pencil"></i>Review</button>
+        <a href="/trades/{{ j.id }}" class="note" style="color:var(--b)">Details</a>
+        {% if j.suggest and j.suggest != j.setup %}<button class="obtn g jsuggest" type="button" data-setup="{{ j.suggest }}" style="margin-left:auto" title="Kora had this plan live when you entered">Tag “{{ j.suggest }}”</button>{% endif %}
+      </div>
+      <form class="jform" style="display:none;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 90px;gap:8px">
+          <input class="field" name="setup" list="setup-tags" value="{{ j.setup or j.suggest or '' }}" placeholder="Setup" aria-label="Setup">
+          <select class="field" name="emotion" aria-label="Emotion"><option value="">Emotion…</option>{% for e in ['calm','confident','anxious','impulsive','fearful','frustrated','fomo','tilted'] %}<option {{ 'selected' if j.emotion == e }}>{{ e }}</option>{% endfor %}</select>
+          <input class="field" name="risk_amount" type="number" step="any" value="{{ j.risk_amount or '' }}" placeholder="Risk $" aria-label="Planned risk">
+        </div>
+        <textarea class="field" name="notes" placeholder="What did you see? What would you do differently?" style="min-height:70px">{{ j.notes or '' }}</textarea>
+        <div style="display:flex;gap:8px"><button class="btn-pri" type="submit" style="padding:7px 16px">Save</button><button class="obtn jcancel" type="button">Cancel</button></div>
+      </form>
+    </div>
     {% else %}
     <div class="panel" style="grid-column:1/-1"><div class="empty">No trades {{ 'match this filter' if f != 'all' else 'ingested yet — run python scripts/run_ingest.py' }}.</div></div>
     {% endfor %}
   </div>
 </div>
+<datalist id="setup-tags">{% for s in setups if s != 'Untagged' %}<option value="{{ s }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$$('.jcard').forEach((card) => {
+    const form = card.querySelector('.jform'), id = card.dataset.id;
+    const open = (on) => { form.style.display = on ? 'flex' : 'none'; };
+    card.querySelector('.jedit-btn').onclick = () => open(form.style.display === 'none');
+    card.querySelector('.jcancel').onclick = () => open(false);
+    const sug = card.querySelector('.jsuggest');
+    if (sug) sug.onclick = async () => { const r = await K.post('/api/annotate', { trade_id: id, setup: sug.dataset.setup });
+      if (r.ok) { K.toast('Tagged ' + sug.dataset.setup); sug.remove(); form.elements.setup.value = sug.dataset.setup; } };
+    form.onsubmit = async (e) => { e.preventDefault();
+      const f = form.elements, r = await K.post('/api/annotate', { trade_id: id, setup: f.setup.value, emotion: f.emotion.value, notes: f.notes.value, risk_amount: f.risk_amount.value });
+      if (!r.ok) return K.toast(r.message || 'Could not save');
+      card.querySelector('.jnotes').textContent = f.notes.value || 'Not reviewed yet.'; open(false); K.toast('Review saved'); };
+  });
+})();
+</script>
 {% endblock %}

@@ -204,8 +204,13 @@ def charts():
     rows = D.instrument_rows(_conn())
     code = (request.args.get("code") or (rows[0]["code"] if rows else "")).upper()
     tf = request.args.get("tf", "M15").upper()
-    return render_template("charts.html", active="charts", rows=rows, code=code, tf=tf,
-                           meta=by_code().get(code))
+    from src.analyst import library as L
+    from src.analyst import strategies as ST
+    settings = get_settings(_conn())
+    strat_opts = [{"ref": s["id"], "name": s["name"], "tf": s["params"].get("entry_tf", "M15"), "group": "Your strategies"} for s in ST.saved(settings)]
+    strat_opts += [{"ref": f"lib:{p['id']}:0", "name": p["name"], "tf": None, "group": "Library"} for p in L.PRESETS]
+    return render_template("charts.html", active="charts", rows=rows, code=code, tf=tf, meta=by_code().get(code),
+                           strat_opts=strat_opts, strategy=request.args.get("strategy") or "")
 
 
 @app.route("/kora")
@@ -590,8 +595,7 @@ def api_strategy_marks():
         if not st:
             return jsonify({"error": "unknown strategy"}), 404
         params, name = {**ST.to_rules(st), "entry_tf": tf}, st["name"]
-    from src.live.sources import fetch_candles_sync
-    candles = fetch_candles_sync(meta, tf, int(request.args.get("count") or 1500))
+    candles = _chart_candles(conn, meta, tf, min(5000, int(request.args.get("count") or 1500)))
     out = R.signals_for_chart(candles, params, meta, spread_for(code, get_quotes(conn)))
     out["name"] = name
     return jsonify(out)
@@ -934,6 +938,21 @@ def api_live():
     })
 
 
+def _chart_candles(conn, meta: dict, tf: str, count: int) -> list[dict]:
+    """Candles exactly as the chart shows them (same source, same sim scaling),
+    so strategy signals line up with the candles on screen."""
+    from src.live.sources import fetch_candles_sync
+    feed = D.feed_status(conn)
+    candles = fetch_candles_sync(meta, tf, count, feed["source"] if feed["online"] else None)
+    q = get_quotes(conn).get(meta["code"]) or {}
+    if q.get("price") and candles and feed["sim"]:
+        scale = q["price"] / candles[-1]["close"]
+        for c in candles:
+            for k in ("open", "high", "low", "close"):
+                c[k] *= scale
+    return candles
+
+
 @app.route("/api/chart/<code>")
 def api_chart(code):
     code = code.upper()
@@ -944,18 +963,11 @@ def api_chart(code):
     conn = _conn()
     feed = D.feed_status(conn)
     try:
-        from src.live.sources import fetch_candles_sync
-        count = max(60, min(request.args.get("count", 500, type=int), 1000))
-        candles = fetch_candles_sync(meta, tf, count, feed["source"] if feed["online"] else None)
+        count = max(60, min(request.args.get("count", 500, type=int), 5000))
+        candles = _chart_candles(conn, meta, tf, count)
     except Exception as e:
         print(f"chart candles failed for {code}: {e}", file=sys.stderr)
         return jsonify({"error": f"Couldn't fetch candles: {e}"}), 502
-    q = get_quotes(conn).get(code) or {}
-    if q.get("price") and candles and feed["sim"]:
-        scale = q["price"] / candles[-1]["close"]
-        for c in candles:
-            for k in ("open", "high", "low", "close"):
-                c[k] *= scale
     overlays = []
     for p in kv_get(conn, "positions", []) or []:
         if p["code"] == code:
@@ -991,7 +1003,26 @@ def api_drawings():
         body = request.get_json(force=True) or {}
         code = (body.get("code") or "").upper()
         if code in by_code():
-            store[code] = [d for d in (body.get("drawings") or [])[:100] if d.get("type") in ("h", "t")]
+            ok_types = {"h", "t", "seg", "ray", "ext", "hray", "v", "rect", "fib", "measure", "text", "long", "short"}
+            clean = []
+            for d in (body.get("drawings") or [])[:300]:
+                if not isinstance(d, dict) or d.get("type") not in ok_types:
+                    continue
+                pts = [{"t": str(p.get("t"))[:40], "p": float(p.get("p"))} for p in (d.get("pts") or [])[:3]
+                       if isinstance(p, dict) and p.get("p") is not None]
+                item = {"type": d["type"], "color": str(d.get("color") or "#5ac8fa")[:16]}
+                if pts:
+                    item["pts"] = pts
+                for k in ("price", "p1", "p2", "tp"):
+                    if d.get(k) is not None:
+                        item[k] = float(d[k])
+                for k in ("t1", "t2"):
+                    if d.get(k):
+                        item[k] = str(d[k])[:40]
+                if d.get("text"):
+                    item["text"] = str(d["text"])[:200]
+                clean.append(item)
+            store[code] = clean
             kv_set(conn, "drawings", store)
         return jsonify({"ok": True})
     return jsonify({"drawings": store.get((request.args.get("code") or "").upper(), [])})

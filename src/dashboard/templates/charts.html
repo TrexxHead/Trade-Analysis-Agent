@@ -2,85 +2,80 @@
 {% block content %}
 {% set watched = rows|selectattr('watched')|list %}
 {% set others = rows|rejectattr('watched')|list %}
-<div class="screen" style="gap:14px">
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    {% for r in watched %}
-    <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="fchip {{ 'on' if r.code == code }}">{{ r.code }}</a>
-    {% endfor %}
+<div class="screen" style="gap:12px">
+  <div class="ctop">
+    {% for r in watched %}<a href="/charts?code={{ r.code }}&tf={{ tf }}{% if strategy %}&strategy={{ strategy|urlencode }}{% endif %}" class="fchip {{ 'on' if r.code == code }}">{{ r.code }}</a>{% endfor %}
     {% if others %}
     <select class="field" style="width:auto;padding:6px 10px;font-size:13px" onchange="if(this.value)location.href='/charts?code='+this.value+'&tf={{ tf }}'">
-      <option value="">More instruments…</option>
-      {% for r in others %}<option value="{{ r.code }}" {{ 'selected' if r.code == code }}>{{ r.code }} · {{ r.name }}</option>{% endfor %}
+      <option value="">More…</option>{% for r in others %}<option value="{{ r.code }}" {{ 'selected' if r.code == code }}>{{ r.code }} · {{ r.name }}</option>{% endfor %}
     </select>
     {% endif %}
-    <div style="margin-left:auto;display:flex;gap:4px;background:rgba(255,255,255,.05);border-radius:10px;padding:3px">
-      {% for t in ['M1','M5','M15','M30','H1','H4','D1'] %}
-      <a href="/charts?code={{ code }}&tf={{ t }}" style="font-size:12.5px;font-weight:500;padding:5px 11px;border-radius:8px;{% if t == tf %}color:var(--ink);background:rgba(255,255,255,.92){% else %}color:var(--muted){% endif %}">{{ t }}</a>
-      {% endfor %}
-    </div>
+    <div class="tfseg">{% for t in ['M1','M5','M15','M30','H1','H4','D1'] %}<a href="/charts?code={{ code }}&tf={{ t }}{% if strategy %}&strategy={{ strategy|urlencode }}{% endif %}" class="{{ 'on' if t == tf }}">{{ t }}</a>{% endfor %}</div>
   </div>
 
   {% set cur = (rows|selectattr('code','equalto',code)|list or [None])[0] %}
-  <div class="grid" style="grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start">
-    <div class="panel" style="padding:16px 18px">
-      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px">
-        <span style="font-weight:700;font-size:18px;letter-spacing:-.02em;color:#fff">{{ meta.name if meta else code }}</span>
-        <span class="faint">{{ tf }}</span>
-        {% if cur %}
-        <span class="mono c-{{ cur.chg_t }}" style="font-weight:600;font-size:17px" data-live="q:{{ code }}:price">{{ cur.price_s }}</span>
-        <span class="mono c-{{ cur.chg_t }}" style="font-size:13px"><span data-live="q:{{ code }}:chg">{{ cur.chg_s }}</span> today</span>
-        {% endif %}
+  <div class="grid cgrid">
+    <div class="panel cpanel" id="cpanel">
+      <div class="chead">
+        <span class="cname">{{ meta.name if meta else code }}</span><span class="faint">{{ tf }}</span>
+        {% if cur %}<span class="mono c-{{ cur.chg_t }}" style="font-weight:600;font-size:16px" data-live="q:{{ code }}:price">{{ cur.price_s }}</span>
+        <span class="mono c-{{ cur.chg_t }}" style="font-size:12.5px"><span data-live="q:{{ code }}:chg">{{ cur.chg_s }}</span></span>{% endif %}
         <span class="mono faint" style="font-size:12px" id="ohlc"></span>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div class="cbar">
         <button class="obtn" id="btn-ind"><i data-lucide="activity"></i>Indicators</button>
-        <select class="field" id="tpl-select" style="width:auto;padding:6px 10px;font-size:13px"><option value="">Templates…</option></select>
-        <span style="width:1px;height:20px;background:var(--line2)"></span>
-        <button class="obtn" id="draw-h" title="Click the chart to place a horizontal line">― Line</button>
-        <button class="obtn" id="draw-t" title="Click two points on the chart">⟋ Trend</button>
-        <button class="obtn" id="draw-undo" title="Remove the last drawing">Undo</button>
-        <button class="obtn r" id="draw-clear">Clear</button>
-        <span style="width:1px;height:20px;background:var(--line2)"></span>
+        <div class="mixes" id="mixes"></div>
+        <button class="obtn" id="mix-save" title="Save the current indicators as a reusable mix"><i data-lucide="bookmark-plus"></i>Save mix</button>
+        <span class="vsep2"></span>
+        <select class="field" id="strat-sel" style="width:auto;max-width:230px;padding:6px 10px;font-size:13px" aria-label="Show a strategy's signals">
+          <option value="">Strategy signals…</option>
+          {% for g in strat_opts|groupby('group') %}<optgroup label="{{ g.grouper }}">{% for s in g.list %}<option value="{{ s.ref }}" {{ 'selected' if s.ref == strategy }}>{{ s.name }}</option>{% endfor %}</optgroup>{% endfor %}
+        </select>
+        <span id="strat-stats" class="note"></span>
+        <button class="obtn g" id="btn-build" title="Turn the indicators on this chart into a strategy you can test"><i data-lucide="git-branch"></i>Build strategy</button>
+        <span style="flex:1"></span>
         <button class="fchip on" data-show="kora">Kora plan</button>
-        <button class="fchip on" data-show="levels">S/R levels</button>
+        <button class="fchip on" data-show="levels">S/R</button>
         <button class="fchip on" data-show="trades">My trades</button>
-        <span class="note" style="margin-left:auto">Scroll to zoom · drag to pan · double-click to reset</span>
+        <button class="fchip on" data-show="marks">Signals</button>
+        <button class="obtn" id="btn-full" title="Full screen (F)"><i data-lucide="maximize-2"></i></button>
       </div>
 
-      <div id="ind-panel" class="panel sunk" style="display:none;margin-bottom:12px;padding:14px 16px;box-shadow:none">
-        <div id="ind-list" style="display:flex;flex-direction:column;gap:8px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
-          <select class="field" id="ind-add" style="width:auto;padding:6px 10px;font-size:13px"><option value="">Add indicator…</option></select>
-          <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
-            <input class="field" id="tpl-name" placeholder="Template name" style="width:170px;padding:6px 10px;font-size:13px">
-            <button class="btn-pri" id="tpl-save" style="padding:7px 14px">Save template</button>
-            <button class="obtn" id="tpl-default" title="Load this template automatically">Set as default</button>
-            <button class="obtn r" id="tpl-delete">Delete</button>
-          </span>
+      <div id="ind-panel" class="panel sunk" style="display:none;margin-bottom:10px;padding:14px 16px;box-shadow:none">
+        <div class="grid" style="grid-template-columns:minmax(0,1fr) 260px;gap:16px">
+          <div><div class="note" style="margin-bottom:8px">On the chart</div><div id="ind-list" style="display:flex;flex-direction:column;gap:8px"></div></div>
+          <div><input class="field" id="ind-search" placeholder="Add indicator…" style="padding:6px 10px;font-size:13px"><div id="ind-add" class="ind-add"></div></div>
         </div>
       </div>
 
-      <canvas id="chart" style="width:100%;height:520px;display:block;cursor:crosshair"></canvas>
-      <div id="chart-msg" class="empty" style="display:none"></div>
-      <div class="note" style="margin-top:8px" id="plan-note"></div>
+      <div class="cwrap">
+        <div class="rail" id="rail"></div>
+        <div style="flex:1;min-width:0;position:relative">
+          <canvas id="chart" style="width:100%;height:540px;display:block"></canvas>
+          <div class="selbar" id="selbar" style="display:none"></div>
+          <div id="chart-msg" class="empty" style="display:none"></div>
+        </div>
+      </div>
+      <div class="note" style="margin-top:8px;display:flex;gap:14px;flex-wrap:wrap"><span id="plan-note"></span><span class="faint">Drag to pan (it coasts) · scroll or pinch to zoom at the cursor · drag the price scale to stretch, double-click it to auto-fit · ←/→ pan · +/− zoom · Del removes a drawing · Ctrl+Z undo · right-click cancels a tool</span></div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="cside">
       <div class="panel flush">
-        <div style="padding:16px 18px 6px"><h3 class="h3">Watchlist</h3></div>
+        <div style="padding:14px 16px 6px"><h3 class="h3">Watchlist</h3></div>
         {% for r in watched %}
-        <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="drow" style="grid-template-columns:1fr auto;padding:9px 18px;{% if r.code == code %}background:rgba(255,255,255,.06){% endif %}">
+        <a href="/charts?code={{ r.code }}&tf={{ tf }}" class="drow" style="grid-template-columns:1fr auto;padding:8px 16px;{% if r.code == code %}background:rgba(255,255,255,.06){% endif %}">
           <span><span style="font-weight:600;color:#fff;display:block">{{ r.code }}</span><span class="faint" style="font-size:11.5px">{{ r.name }}</span></span>
           <span style="text-align:right"><span class="mono" style="display:block" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span><span class="mono c-{{ r.chg_t }}" style="font-size:12px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</span></span>
         </a>
         {% endfor %}
-        <div style="padding:10px 18px 14px"><a href="/settings#watchlist" class="note" style="color:var(--b)">Edit watchlist</a></div>
+        <div style="padding:8px 16px 12px"><a href="/settings#watchlist" class="note" style="color:var(--b)">Edit watchlist</a></div>
       </div>
       <div class="panel" id="kora-side">
         <h3 class="h3" style="margin-bottom:8px">Kora on {{ code }}</h3>
         <div class="note" id="kora-side-body">Loading…</div>
         <a href="/kora/{{ code }}" class="obtn b" style="margin-top:12px;justify-content:center;width:100%">Full breakdown</a>
       </div>
+      <div class="panel" id="strat-side" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -89,69 +84,149 @@
 <script src="{{ url_for('static', filename='chart.js') }}"></script>
 <script>
 (function(){
-  const K = window.KORA, code = {{ code|tojson }}, tf = {{ tf|tojson }}, T = K.INDICATOR_TYPES;
+  const K = window.KORA, code = {{ code|tojson }}, tf = {{ tf|tojson }}, T = K.INDICATOR_TYPES, TOOLS = K.CHART_TOOLS;
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const ohlc = K.$('#ohlc');
-  const saveDrawings = (list) => K.post('/api/drawings', { code, drawings: list });
-  const chart = new K.Chart(K.$('#chart'), { height: 520, onDrawings: saveDrawings, onHover: (k) => {
-    if (!chart.data || !k) return; const d = chart.data.digits > 4 ? 5 : chart.data.digits;
-    ohlc.textContent = `O ${K.fm(k.open,d)}  H ${K.fm(k.high,d)}  L ${K.fm(k.low,d)}  C ${K.fm(k.close,d)}`;
-  }});
-  const LS = 'kora-chart-indicators';
-  const DEFAULT = [{ type: 'ema', params: { period: 20 }, color: '#5ac8fa' }, { type: 'ema', params: { period: 50 }, color: '#ffc34d' }, { type: 'vwap', params: {}, color: '#bf9cff' }];
-  let inds; try { inds = JSON.parse(localStorage.getItem(LS)); } catch (e) { inds = null; }
-  let templates = {}, defaultTpl = null;
+  let count = 1500;
+  let saveT = null;
+  const saveDrawings = (list) => { clearTimeout(saveT); saveT = setTimeout(() => K.post('/api/drawings', { code, drawings: JSON.parse(JSON.stringify(list)) }), 250); };
+  const chart = new K.Chart(K.$('#chart'), {
+    height: 540, onDrawings: saveDrawings,
+    onHover: (k) => { if (!chart.data || !k) return; const d = chart.data.digits > 4 ? 5 : chart.data.digits; const ch = ((k.close - k.open) / k.open) * 100;
+      ohlc.innerHTML = `O ${K.fm(k.open,d)} H ${K.fm(k.high,d)} L ${K.fm(k.low,d)} C ${K.fm(k.close,d)} <span class="c-${ch >= 0 ? 'g' : 'r'}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%</span>`; },
+    onTool: (t) => K.$$('#rail [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t)),
+    onSelect: (d) => showSel(d),
+    onNeedMore: async (done) => { if (count >= 5000) return done(); count = Math.min(5000, count * 2); await load(true); done(); },
+  });
 
+  // ---------------------------------------------------------------- tool rail
+  const groups = [['cursor'], ['seg', 'ray', 'ext'], ['h', 'hray', 'v'], ['rect', 'fib', 'measure', 'text'], ['long', 'short']];
+  K.$('#rail').innerHTML = groups.map((g) => g.map((t) => `<button data-tool="${t}" class="${t === 'cursor' ? 'on' : ''}" title="${TOOLS[t].name}"><i data-lucide="${TOOLS[t].icon}"></i></button>`).join('')).join('<span class="rsep"></span>') +
+    `<span class="rsep"></span><button id="t-magnet" class="on" title="Magnet: snap to open/high/low/close"><i data-lucide="magnet"></i></button>
+     <button id="t-eye" title="Hide/show drawings"><i data-lucide="eye"></i></button>
+     <button id="t-clear" title="Delete all drawings on ${code}"><i data-lucide="trash-2"></i></button>`;
+  K.$$('#rail [data-tool]').forEach((b) => b.onclick = () => { chart.setTool(b.dataset.tool); chart.c.focus(); if (b.dataset.tool !== 'cursor') K.toast(TOOLS[b.dataset.tool].name + (TOOLS[b.dataset.tool].pts === 2 ? ': click two points' : ': click the chart')); });
+  K.$('#t-magnet').onclick = (e) => { chart.magnet = !chart.magnet; e.currentTarget.classList.toggle('on', chart.magnet); };
+  K.$('#t-eye').onclick = (e) => { chart.show.drawings = !chart.show.drawings; e.currentTarget.classList.toggle('on', !chart.show.drawings); chart.req(); };
+  K.$('#t-clear').onclick = () => { if (!chart.drawings.length || !confirm(`Delete all ${chart.drawings.length} drawings on ${code}?`)) return; chart.drawings = []; chart.sel = -1; saveDrawings([]); showSel(null); chart.req(); };
+  document.addEventListener('keydown', (e) => { if (e.target.closest('input,textarea,select')) return;
+    const map = { t: 'seg', r: 'ray', h: 'h', v: 'v', b: 'rect', f: 'fib', m: 'measure', n: 'text' };
+    if (e.key === 'f' && e.shiftKey) return; if (e.key === 'F') { toggleFull(); return; }
+    if (e.altKey && map[e.key.toLowerCase()]) { chart.setTool(map[e.key.toLowerCase()]); e.preventDefault(); } });
+
+  // selected drawing: colours + delete
+  const SW = ['#5ac8fa', '#9bd35a', '#ffc34d', '#ff6b61', '#bf9cff', '#f5f5f7'];
+  function showSel(d) {
+    const bar = K.$('#selbar'); if (!d) { bar.style.display = 'none'; return; }
+    bar.innerHTML = `<span class="note">${esc(TOOLS[d.type]?.name || d.type)}</span>${SW.map((c) => `<button class="sw" data-c="${c}" style="background:${c}" aria-label="Colour"></button>`).join('')}
+      ${d.type === 'text' ? '<button class="obtn" id="sel-edit" style="padding:3px 10px">Edit</button>' : ''}<button class="obtn r" id="sel-del" style="padding:3px 10px">Delete</button>`;
+    bar.style.display = 'flex';
+    bar.querySelectorAll('.sw').forEach((b) => b.onclick = () => { d.color = b.dataset.c; chart.changed(); chart.req(); });
+    K.$('#sel-del').onclick = () => { chart.drawings.splice(chart.sel, 1); chart.sel = -1; chart.changed(); showSel(null); chart.req(); };
+    if (K.$('#sel-edit')) K.$('#sel-edit').onclick = () => { const t = prompt('Edit note', d.text); if (t != null) { d.text = t; chart.changed(); chart.req(); } };
+  }
+  fetch('/api/drawings?code=' + code).then((r) => r.json()).then((r) => { chart.drawings = r.drawings || []; chart.req(); });
+  K.$$('[data-show]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); chart.show[b.dataset.show] = b.classList.contains('on'); chart.req(); });
+
+  // ---------------------------------------------------------------- indicators + mixes
+  const LS = 'kora-chart-indicators';
+  const DEFAULT = [{ type: 'ema', params: { period: 20 }, color: '#5ac8fa' }, { type: 'ema', params: { period: 50 }, color: '#ffc34d' }];
+  let inds; try { inds = JSON.parse(localStorage.getItem(LS)); } catch (e) { inds = null; }
+  let templates = {}, defaultTpl = null, activeMix = null;
   function save() { try { localStorage.setItem(LS, JSON.stringify(inds)); } catch (e) {} chart.setIndicators(inds); renderList(); }
   function renderList() {
     K.$('#ind-list').innerHTML = inds.length ? inds.map((ind, i) => {
-      const t = T[ind.type], params = { ...t.params, ...ind.params };
-      const fields = Object.entries(params).map(([k, v]) => `<label class="note" style="display:flex;align-items:center;gap:5px">${k}<input class="field" type="number" step="any" data-i="${i}" data-k="${k}" value="${v}" style="width:68px;padding:4px 8px;font-size:12.5px"></label>`).join('');
-      return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><input type="color" data-color="${i}" value="${ind.color.startsWith('#') ? ind.color : '#9bd35a'}" style="width:26px;height:26px;border:none;background:none;padding:0;cursor:pointer" aria-label="Colour">
-        <span style="font-weight:600;min-width:90px">${t.name}</span><span class="tag">${t.pane ? 'Pane' : 'On price'}</span>${fields}
-        <button class="obtn r" data-del="${i}" style="margin-left:auto;padding:3px 10px">Remove</button></div>`;
-    }).join('') : '<div class="note">No indicators. Add one below.</div>';
-    K.$$('#ind-list [data-k]').forEach((el) => el.onchange = () => { inds[el.dataset.i].params = { ...inds[el.dataset.i].params, [el.dataset.k]: Number(el.value) }; save(); });
+      const t = T[ind.type]; if (!t) return '';
+      const params = { ...t.params, ...ind.params };
+      const fields = Object.entries(params).map(([k, v]) => `<label class="note" style="display:flex;align-items:center;gap:5px">${k}<input class="field" type="number" step="any" data-i="${i}" data-k="${k}" value="${v}" style="width:66px;padding:4px 8px;font-size:12.5px"></label>`).join('');
+      return `<div class="indrow"><input type="color" data-color="${i}" value="${(ind.color || '#9bd35a').startsWith('#') ? ind.color.slice(0, 7) : '#9bd35a'}" aria-label="Colour">
+        <span style="font-weight:600;min-width:110px">${esc(t.name)}</span><span class="tag">${t.pane ? 'Pane' : 'On price'}</span>${fields}
+        <button class="bx" data-del="${i}" title="Remove" aria-label="Remove">×</button></div>`;
+    }).join('') : '<div class="note">No indicators. Pick one on the right.</div>';
+    K.$$('#ind-list [data-k]').forEach((el) => el.onchange = () => { inds[el.dataset.i].params = { ...inds[el.dataset.i].params, [el.dataset.k]: Number(el.value) }; activeMix = null; save(); drawMixes(); });
     K.$$('#ind-list [data-color]').forEach((el) => el.oninput = () => { inds[el.dataset.color].color = el.value; save(); });
-    K.$$('#ind-list [data-del]').forEach((el) => el.onclick = () => { inds.splice(Number(el.dataset.del), 1); save(); });
+    K.$$('#ind-list [data-del]').forEach((el) => el.onclick = () => { inds.splice(Number(el.dataset.del), 1); activeMix = null; save(); drawMixes(); });
   }
-  K.$('#ind-add').innerHTML = '<option value="">Add indicator…</option>' + Object.entries(T).map(([k, t]) => `<option value="${k}">${t.name}${t.pane ? ' (pane)' : ''}</option>`).join('');
-  K.$('#ind-add').onchange = (e) => { const k = e.target.value; if (!k) return; inds.push({ type: k, params: { ...T[k].params }, color: T[k].color }); e.target.value = ''; save(); };
-  K.$('#btn-ind').onclick = () => { const p = K.$('#ind-panel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
-  K.$('#draw-h').onclick = () => { chart.mode = 'h'; chart.pending = null; K.toast('Click the chart to place the line'); };
-  K.$('#draw-t').onclick = () => { chart.mode = 't'; chart.pending = null; K.toast('Click two points for the trend line'); };
-  K.$('#draw-undo').onclick = () => { chart.drawings.pop(); saveDrawings(chart.drawings); chart.draw(); };
-  K.$('#draw-clear').onclick = () => { chart.drawings = []; saveDrawings([]); chart.draw(); K.toast('Drawings cleared for ' + code); };
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { chart.mode = null; chart.pending = null; chart.draw(); } });
-  fetch('/api/drawings?code=' + code).then((r) => r.json()).then((r) => { chart.drawings = r.drawings || []; chart.draw(); });
-  K.$$('[data-show]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); chart.show[b.dataset.show] = b.classList.contains('on'); chart.draw(); });
-
+  function drawAdd() {
+    const q = K.$('#ind-search').value.toLowerCase();
+    const items = Object.entries(T).filter(([k, t]) => !q || t.name.toLowerCase().includes(q) || k.includes(q));
+    K.$('#ind-add').innerHTML = ['On price', 'Pane'].map((grp) => { const list = items.filter(([, t]) => (grp === 'Pane') === !!t.pane);
+      return list.length ? `<div class="note" style="margin:8px 0 4px">${grp}</div>` + list.map(([k, t]) => `<button data-add="${k}"><span style="background:${t.color}"></span>${esc(t.name)}</button>`).join('') : ''; }).join('');
+    K.$$('#ind-add [data-add]').forEach((b) => b.onclick = () => { const k = b.dataset.add; inds.push({ type: k, params: { ...T[k].params }, color: T[k].color }); activeMix = null; save(); drawMixes(); });
+  }
+  K.$('#ind-search').oninput = drawAdd;
+  K.$('#btn-ind').onclick = () => { const p = K.$('#ind-panel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; if (p.style.display === 'block') K.$('#ind-search').focus(); };
+  function drawMixes() {
+    K.$('#mixes').innerHTML = Object.keys(templates).map((n) => `<span class="mix ${n === activeMix ? 'on' : ''}"><button data-mix="${esc(n)}" title="Apply this indicator mix">${esc(n)}${n === defaultTpl ? ' ★' : ''}</button><button class="mx" data-mixmenu="${esc(n)}" title="Options" aria-label="Mix options">⋯</button></span>`).join('');
+    K.$$('#mixes [data-mix]').forEach((b) => b.onclick = () => { const n = b.dataset.mix; inds = JSON.parse(JSON.stringify(templates[n])); activeMix = n; save(); drawMixes(); K.toast(`Applied “${n}”`); });
+    K.$$('#mixes [data-mixmenu]').forEach((b) => b.onclick = async () => {
+      const n = b.dataset.mixmenu, a = prompt(`“${n}”: type  default  to load it automatically, update to overwrite it with the current indicators, or delete`, 'default');
+      if (!a) return; const act = a.trim().toLowerCase();
+      if (act === 'default') await K.post('/api/chart-templates', { action: 'default', name: n });
+      else if (act === 'update') await K.post('/api/chart-templates', { action: 'save', name: n, indicators: inds.map(({ type, params, color }) => ({ type, params, color })) });
+      else if (act === 'delete') await K.post('/api/chart-templates', { action: 'delete', name: n });
+      await loadTemplates(); K.toast('Done');
+    });
+  }
   async function loadTemplates() {
     const r = await (await fetch('/api/chart-templates')).json(); templates = r.templates || {}; defaultTpl = r.default;
-    const sel = K.$('#tpl-select');
-    sel.innerHTML = '<option value="">Templates…</option>' + Object.keys(templates).map((n) => `<option value="${n}">${n}${n === defaultTpl ? ' (default)' : ''}</option>`).join('');
-    if (!inds) { inds = defaultTpl && templates[defaultTpl] ? JSON.parse(JSON.stringify(templates[defaultTpl])) : DEFAULT; save(); }
+    if (!inds) { inds = defaultTpl && templates[defaultTpl] ? JSON.parse(JSON.stringify(templates[defaultTpl])) : DEFAULT; activeMix = defaultTpl; save(); }
+    drawMixes();
   }
-  K.$('#tpl-select').onchange = (e) => { const n = e.target.value; if (!n) return; inds = JSON.parse(JSON.stringify(templates[n])); K.$('#tpl-name').value = n; save(); K.toast(`Applied “${n}”`); };
-  K.$('#tpl-save').onclick = async () => { const n = K.$('#tpl-name').value.trim(); if (!n) return K.toast('Name the template first');
-    await K.post('/api/chart-templates', { action: 'save', name: n, indicators: inds.map(({ type, params, color }) => ({ type, params, color })) }); await loadTemplates(); K.toast(`Saved “${n}”`); };
-  K.$('#tpl-default').onclick = async () => { const n = K.$('#tpl-name').value.trim() || K.$('#tpl-select').value; if (!templates[n]) return K.toast('Save the template first');
-    await K.post('/api/chart-templates', { action: 'default', name: n }); await loadTemplates(); K.toast(`“${n}” loads by default`); };
-  K.$('#tpl-delete').onclick = async () => { const n = K.$('#tpl-name').value.trim() || K.$('#tpl-select').value; if (!templates[n]) return K.toast('Pick a template to delete');
-    await K.post('/api/chart-templates', { action: 'delete', name: n }); await loadTemplates(); K.toast(`Deleted “${n}”`); };
+  K.$('#mix-save').onclick = async () => { const n = (prompt('Name this indicator mix', activeMix || 'My mix') || '').trim(); if (!n) return;
+    await K.post('/api/chart-templates', { action: 'save', name: n, indicators: inds.map(({ type, params, color }) => ({ type, params, color })) }); activeMix = n; await loadTemplates(); K.toast(`Saved “${n}”`); };
 
-  async function load() {
-    const r = await fetch(`/api/chart/${code}?tf=${tf}&count=500`); const d = await r.json();
+  // ---------------------------------------------------------------- strategy overlay + build
+  async function loadMarks() {
+    const ref = K.$('#strat-sel').value, side = K.$('#strat-side');
+    const url = new URL(location.href); if (ref) url.searchParams.set('strategy', ref); else url.searchParams.delete('strategy'); history.replaceState(null, '', url);
+    if (!ref) { chart.setMarks(null); K.$('#strat-stats').textContent = ''; side.style.display = 'none'; return; }
+    K.$('#strat-stats').textContent = 'testing…';
+    const r = await (await fetch(`/api/strategy-marks?code=${code}&tf=${tf}&ref=${encodeURIComponent(ref)}&count=${Math.min(count, 3000)}`)).json();
+    if (r.error) { K.$('#strat-stats').textContent = r.error; return; }
+    chart.setMarks(r); const s = r.stats;
+    K.$('#strat-stats').innerHTML = s.n ? `${s.n} trades · ${s.win_rate}% win · <b class="c-${s.expectancy > 0 ? 'g' : 'r'}">${s.expectancy > 0 ? '+' : ''}${s.expectancy.toFixed(2)}R</b>/trade on this chart` : 'no signals in view';
+    side.style.display = 'block';
+    side.innerHTML = `<h3 class="h3" style="margin-bottom:6px">${esc(r.name)}</h3><div class="note">${esc(r.exit_name)} · ${tf} · spread charged</div>
+      <div class="bstats" style="margin-top:10px"><div><span>Trades</span><b>${s.n}</b></div><div><span>Win</span><b>${s.win_rate ?? '—'}%</b></div><div><span>Per trade</span><b class="c-${(s.expectancy || 0) > 0 ? 'g' : 'r'}">${s.expectancy != null ? (s.expectancy > 0 ? '+' : '') + s.expectancy.toFixed(2) + 'R' : '—'}</b></div><div><span>PF</span><b>${s.pf ?? '—'}</b></div></div>
+      <div class="note" style="margin-top:8px">Visible history only. For the full test and every exit style:</div>
+      <a class="obtn b" style="margin-top:8px;width:100%;justify-content:center" href="/strategies?s=${ref.startsWith('lib:') ? 'lib:' + ref.split(':')[1] : 'my:' + ref}&code=${code}&tf=${tf}&run=1">Open in Strategy Lab</a>`;
+  }
+  K.$('#strat-sel').onchange = loadMarks;
+  K.$('#btn-build').onclick = async () => {
+    const over = inds.filter((i) => T[i.type] && !T[i.type].pane && ['ema', 'sma', 'wma', 'hma'].includes(i.type));
+    const op = (i) => ({ ind: i.type, params: { ...T[i.type].params, ...i.params } });
+    const long = [];
+    if (over.length >= 2) { const [a, b] = [...over].sort((x, y) => (x.params.period || 0) - (y.params.period || 0)); long.push({ a: op(a), op: 'crosses_above', b: op(b) }); }
+    else if (over.length === 1) long.push({ a: { price: 'close' }, op: 'crosses_above', b: op(over[0]) });
+    const osc = inds.find((i) => ['rsi', 'stoch', 'zone', 'stochrsi', 'willr', 'cci'].includes(i.type));
+    if (osc) { const lv = (T[osc.type].levels || [30, 70])[0]; long.push({ a: { ind: osc.type, params: { ...T[osc.type].params, ...osc.params }, out: osc.type === 'stoch' || osc.type === 'stochrsi' ? 'k' : undefined }, op: '<', b: { value: lv }, within: 6 }); }
+    const st = inds.find((i) => i.type === 'supertrend'); if (st) long.push({ a: { ind: 'supertrend', params: { ...T.supertrend.params, ...st.params }, out: 'dir' }, op: '>', b: { value: 0 } });
+    if (!long.length) long.push({ a: { ind: 'ema', params: { period: 20 } }, op: 'crosses_above', b: { ind: 'ema', params: { period: 50 } } });
+    const name = prompt('Name the strategy', `${code} ${tf} chart strategy`); if (!name) return;
+    const r = await K.post('/api/strategies', { action: 'create', from: 'blank', name, params: { entry_tf: tf, mirror: true, long, stop: { type: 'atr', mult: 1.5 }, exit: 'fixed_r', tp_r: 1.5 } });
+    K.toast(r.message); if (r.ok) location.href = `/strategies?s=my:${r.id}&code=${code}`;
+  };
+
+  // ---------------------------------------------------------------- full screen + load
+  function toggleFull() { const p = K.$('#cpanel'); if (!document.fullscreenElement) p.requestFullscreen?.(); else document.exitFullscreen?.(); }
+  K.$('#btn-full').onclick = toggleFull;
+  document.addEventListener('fullscreenchange', () => { chart.opts.height = document.fullscreenElement ? window.innerHeight - 170 : 540; chart.req(); });
+
+  async function load(more) {
+    const r = await fetch(`/api/chart/${code}?tf=${tf}&count=${count}`); const d = await r.json();
     if (d.error) { const m = K.$('#chart-msg'); m.textContent = d.error; m.style.display = 'block'; K.$('#chart').style.display = 'none'; return; }
+    if (more) chart._prepending = true;
     chart.set(d);
     const side = K.$('#kora-side-body');
     if (d.plan) { K.$('#plan-note').textContent = `Kora plan: ${d.plan.title} · ${d.plan.grade}-grade · ${d.plan.confidence}%`;
-      side.innerHTML = `<div style="color:var(--text);font-weight:600">${d.plan.title}</div><div style="margin-top:4px">${d.plan.grade}-grade · ${d.plan.confidence}% confidence</div><div style="margin-top:6px">${d.plan.levels || ''}</div>`; }
+      side.innerHTML = `<div style="color:var(--text);font-weight:600">${esc(d.plan.title)}</div><div style="margin-top:4px">${d.plan.grade}-grade · ${d.plan.confidence}% confidence</div><div style="margin-top:6px">${esc(d.plan.levels || '')}</div>`; }
     else side.textContent = d.bias ? `Bias ${d.bias.toLowerCase()} — no setup on the execution timeframe right now.` : 'Not analysed yet — start the Kora service.';
-    if (d.trades && d.trades.length) K.$('#plan-note').textContent += `${K.$('#plan-note').textContent ? ' · ' : ''}${d.trades.length} of your trades marked`;
   }
-  loadTemplates().then(() => { chart.setIndicators(inds); renderList(); load(); });
-  setInterval(load, 60000);
+  loadTemplates().then(() => { chart.setIndicators(inds); renderList(); drawAdd(); load().then(() => { if (K.$('#strat-sel').value) loadMarks(); }); });
+  setInterval(() => load(), 60000);
   K.onLive.push((d) => chart.live(d.quotes[code]));
+  if (window.lucide) lucide.createIcons();
 })();
 </script>
 {% endblock %}

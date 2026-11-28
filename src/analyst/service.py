@@ -290,8 +290,9 @@ class KoraService:
             if res:
                 status, r = res
                 resolve_plan_row(self.conn, p["id"], status, r)
-                word = {"won": f"hit TP1 for {r:+.2f}R", "lost": "stopped out (-1R)", "not_filled": "limit never filled",
-                        "expired": f"expired after 48 bars at {r:+.2f}R"}[status]
+                rr = f"{r:+.2f}R" if r is not None else "n/a"   # a limit that never filled has no R
+                word = {"won": f"hit TP1 for {rr}", "lost": "stopped out (-1R)", "not_filled": "limit never filled",
+                        "expired": f"expired after 48 bars at {rr}"}.get(status, status)
                 add_decision(self.conn, f"RESULT — {p['code']} {p['direction']} {p['setup_name']} {word}",
                              "g" if status == "won" else "r" if status == "lost" else "b",
                              f"Plan logged {p['created_at'][:16]} UTC ({p['grade']}-grade, {p['confidence']:.0f}%): entry "

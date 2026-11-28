@@ -168,3 +168,20 @@ def test_auto_tune_switches_off_losing_setup(tmp_path, monkeypatch):
     from src.analyst.config import get_settings
     assert "breakout_retest" in get_settings(conn)["setups_off"]["V75"]
     assert refine.auto_tune(conn) == []   # idempotent
+
+
+def test_resolve_plans_handles_unfilled_limit(tmp_path, monkeypatch):
+    import asyncio
+    from src.analyst import service as S
+    from src.store.db import kora_connection
+    conn = kora_connection(tmp_path / "u.db")
+    svc = S.KoraService.__new__(S.KoraService)
+    svc.conn = conn
+    plan = {"id": 1, "code": "CRASH1000", "direction": "short", "setup_name": "Range reversion", "created_at": "2026-11-27T10:00:00+00:00",
+            "grade": "B", "confidence": 70.0, "entry": 5700.0, "stop": 5720.0, "tp1": 5660.0, "digits": 2}
+    monkeypatch.setattr(S, "open_plans", lambda c: [plan])
+    monkeypatch.setattr(S, "resolve_plan", lambda h1, t, p: ("not_filled", None))
+    monkeypatch.setattr(S, "resolve_plan_row", lambda *a: None)
+    asyncio.run(svc.resolve_plans({"CRASH1000": {"H1": [{"time": "x"}]}}))
+    from src.store.db import list_decisions
+    assert "limit never filled" in list_decisions(conn, 1)[0]["action"]

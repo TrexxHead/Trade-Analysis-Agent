@@ -397,7 +397,9 @@ def api_strategies():
         try:
             tf = find["params"]["entry_tf"]
             candles = ST.history(meta, tf, ST.bars_for_backtest(tf))
-            bt = ST.backtest(candles, find["params"], meta)
+            from src.analyst.research import spread_for
+            from src.store.db import get_quotes
+            bt = ST.run_backtest(candles, find, meta, spread_for(meta["code"], get_quotes(conn)))
         except Exception as e:
             return jsonify({"ok": False, "message": f"Backtest failed: {e}"}), 500
         store = kv_get(conn, "strategy_bt", {}) or {}

@@ -26,7 +26,7 @@ from datetime import datetime
 
 from src.analyst import ta
 
-TEMPLATES = {"ema_stoch": "EMA cross + Stochastic zones"}
+TEMPLATES = {"ema_stoch": "EMA cross + Stochastic zones", "rules": "Rule builder"}
 
 DEFAULT_PARAMS = {
     "entry_tf": "M15",       # M15 or M5
@@ -79,7 +79,33 @@ def saved(settings: dict) -> list[dict]:
     out = settings.get("strategies")
     if out is None:
         out = [DEFAULT_STRATEGY, DRIFT_STRATEGY]
-    return [{**s, "params": {**DEFAULT_PARAMS, **(s.get("params") or {})}} for s in out]
+    res = []
+    for s in out:
+        if s.get("template", "ema_stoch") == "rules":
+            from src.analyst import rules as R
+            res.append({**s, "params": R.norm(s.get("params") or {})})
+        else:
+            res.append({**s, "template": "ema_stoch", "params": {**DEFAULT_PARAMS, **(s.get("params") or {})}})
+    return res
+
+
+def is_rules(strategy: dict) -> bool:
+    return strategy.get("template") == "rules"
+
+
+def bars_needed(strategy: dict) -> int:
+    """Candles the live cycle should fetch for this strategy's entry timeframe."""
+    if is_rules(strategy):
+        return 600
+    p = strategy["params"]
+    return p["zone_lookback"] + p["slow"] + 150
+
+
+def run_backtest(candles: list[dict], strategy: dict, meta: dict, cost: float = 0.0) -> dict:
+    if is_rules(strategy):
+        from src.analyst import rules as R
+        return R.backtest(candles, strategy["params"], meta, cost)
+    return backtest(candles, strategy["params"], meta, cost)
 
 
 def by_id(settings: dict) -> dict[str, dict]:
@@ -286,7 +312,7 @@ def resolve(params: dict, meta: dict) -> dict:
     return p
 
 
-def backtest(candles: list[dict], params: dict, meta: dict) -> dict:
+def backtest(candles: list[dict], params: dict, meta: dict, cost: float = 0.0) -> dict:
     """Every exit style x higher-timeframe filter, per direction. No overlapping
     trades within one variant (a new signal is ignored while one is open)."""
     p = resolve(params, meta)
@@ -313,16 +339,18 @@ def backtest(candles: list[dict], params: dict, meta: dict) -> dict:
                 if out is None:
                     continue
                 r, bars, why = out
+                r = round(r - (cost / s["risk"] if s["risk"] else 0), 3)
                 busy_until = s["i"] + bars
                 res[s["direction"]].append(r)
                 trades.append({"time": candles[s["i"]]["time"], "direction": s["direction"], "r": r, "bars": bars, "exit": why})
             both = [t["r"] for t in trades]
-            grid.append({"htf": htf, "exit": ex, "exit_name": EXITS[ex], "all": _stats(both),
+            from src.analyst.rules import _curve
+            grid.append({"htf": htf, "exit": ex, "exit_name": EXITS[ex], "all": _stats(both), "curve": _curve(both),
                          "long": _stats(res["long"]), "short": _stats(res["short"]), "trades": trades[-40:]})
     ranked = [g for g in grid if g["all"]["n"] >= 8]
     best = max(ranked, key=lambda g: g["all"]["expectancy"], default=None)
     t0, t1 = (candles[0]["time"], candles[-1]["time"]) if candles else (None, None)
-    return {"code": meta.get("code"), "tf": p["entry_tf"], "bars": len(candles), "from": t0, "to": t1,
+    return {"code": meta.get("code"), "tf": p["entry_tf"], "bars": len(candles), "from": t0, "to": t1, "cost": cost,
             "grid": grid, "best": {k: best[k] for k in ("htf", "exit", "exit_name", "all")} if best else None,
             "ran_at": datetime.now().astimezone().isoformat()}
 
@@ -332,7 +360,10 @@ def stats_rows(bt: dict, strategy: dict) -> list[dict]:
     variant matching the strategy's own HTF filter with the 1R exit, which is
     what live TP1 / paper trading measure."""
     p = strategy["params"]
-    g = next((g for g in bt["grid"] if g["htf"] == p["htf"] and g["exit"] == "fixed_1r"), None)
+    if is_rules(strategy):
+        g = next((g for g in bt["grid"] if g["exit"] == p["exit"]), None)
+    else:
+        g = next((g for g in bt["grid"] if g["htf"] == p["htf"] and g["exit"] == "fixed_1r"), None)
     rows = []
     for d in ("long", "short"):
         st = (g or {}).get(d) or {}
@@ -379,7 +410,29 @@ def history(meta: dict, tf: str, bars: int, source_name: str | None = None) -> l
 
 
 # --------------------------------------------------------------------------- live
-def live_state(candles: list[dict], strategy: dict) -> dict:
+def _rules_state(candles: list[dict], strategy: dict, meta: dict | None = None) -> dict:
+    from src.analyst import rules as R
+    p = R.norm(strategy["params"])
+    ctx = R.Ctx(candles)
+    if ctx.n < 60:
+        return {"ok": False, "text": "Not enough candles yet"}
+    dirs = R.allowed_dirs(p, meta or {})
+    last = None
+    for i in range(ctx.n - 2, max(1, ctx.n - 300), -1):
+        s = R.signal_at(ctx, i, p, dirs)
+        if s:
+            last = (ctx.n - 2 - i, s["direction"])
+            break
+    if last is None:
+        return {"ok": True, "text": "No signal in the last 300 candles: waiting for the rules to line up"}
+    ago, d = last
+    return {"ok": True, "cross_ago": ago, "text": ("Signal on the last closed candle: " + d) if ago == 0 else
+            f"Last signal {ago} candle{'s' if ago != 1 else ''} ago ({d}); waiting for the next one"}
+
+
+def live_state(candles: list[dict], strategy: dict, meta: dict | None = None) -> dict:
+    if is_rules(strategy):
+        return _rules_state(candles, strategy, meta)
     p = {**DEFAULT_PARAMS, **strategy["params"]}
     ind = Ind(candles, p)
     i = len(candles) - 1
@@ -402,6 +455,8 @@ def live_state(candles: list[dict], strategy: dict) -> dict:
 
 def live_candidates(candles: list[dict], strategy: dict, meta: dict, stats: dict) -> list[dict]:
     from src.analyst.calibration import calibrate_confidence
+    if is_rules(strategy):
+        return _rules_candidates(candles, strategy, meta, stats)
     p = resolve(strategy["params"], meta)
     if len(candles) < p["slow"] + 30:
         return []
@@ -461,12 +516,12 @@ def summary(bt: dict, strategy: dict) -> str:
     if not bt or not bt.get("grid"):
         return "No backtest yet."
     p = strategy["params"]
-    mine = next((g for g in bt["grid"] if g["htf"] == p["htf"] and g["exit"] == p["exit"]), None)
+    mine = next((g for g in bt["grid"] if g["htf"] == p.get("htf", "none") and g["exit"] == p["exit"]), None)
     best = bt.get("best")
     parts = []
     if mine and mine["all"]["n"]:
         a = mine["all"]
-        parts.append(f"As set up ({_lc(EXITS[p['exit']])}): {a['n']} trades, {a['win_rate']:.0f}% winners, "
+        parts.append(f"As set up ({_lc(mine['exit_name'])}): {a['n']} trades, {a['win_rate']:.0f}% winners, "
                      f"{a['expectancy']:+.2f}R per trade, worst run {a['max_losing_streak']} losses in a row.")
         for d in ("long", "short"):
             st = mine[d]
@@ -481,3 +536,56 @@ def summary(bt: dict, strategy: dict) -> str:
     if n and n < 30:
         parts.append("Small sample: treat as a hint, not proof.")
     return " ".join(parts)
+
+
+def _rules_candidates(candles: list[dict], strategy: dict, meta: dict, stats: dict) -> list[dict]:
+    from src.analyst import rules as R
+    from src.analyst.calibration import calibrate_confidence
+    p = R.norm(strategy["params"])
+    s = R.live_signal(candles, p, meta)
+    if not s:
+        return []
+    sign, entry, risk = s["sign"], s["entry"], s["risk"]
+    tp_r = float(p.get("tp_r", 1.5)) if p["exit"] == "fixed_r" else 1.0
+    setup = f"my:{strategy['id']}"
+    st = stats.get((meta["code"], setup, s["direction"]))
+    cal = calibrate_confidence(65, tp_r, st)
+    sp = R.spike_side(meta)
+    against = []
+    if (sp == "down" and sign > 0) or (sp == "up" and sign < 0):
+        against.append(f"Against the {'drop' if sp == 'down' else 'spike'} direction: a spike can jump the stop")
+    return [{
+        "setup": setup, "setup_name": f"{strategy['name']} (yours)", "source": "mine", "strategy_id": strategy["id"],
+        "direction": s["direction"], "entry_type": "market", "entry": entry, "stop": s["stop"],
+        "tp1": entry + sign * risk * tp_r, "tp2": entry + sign * risk * max(2.0, tp_r * 1.6),
+        "risk_atr": None, "rr1": round(tp_r, 2), "rr2": round(max(2.0, tp_r * 1.6), 2), "score": 65,
+        "confluence": [R.describe(x) for x in (p["long"] if sign > 0 else p["short"])][:4],
+        "against": against, "trigger": "Market entry on the signal candle's close",
+        "invalidation": "The stop, or your exit rule", "exit_rule": R.exit_name(p["exit"], p),
+        "calibration": cal, "confidence": cal["confidence"],
+    }]
+
+
+def to_rules(strategy: dict) -> dict:
+    """Your EMA/Stoch strategy expressed in the rule builder's format (same
+    entry logic, used by research and editable in the builder)."""
+    if is_rules(strategy):
+        return dict(strategy["params"])
+    p = {**DEFAULT_PARAMS, **strategy["params"]}
+    cb = int(p["confirm_bars"])
+    f = {"ind": "ema", "params": {"period": p["fast"]}}
+    sl = {"ind": "ema", "params": {"period": p["slow"]}}
+    zone = {"ind": "zone", "params": {"ema": p["zone_ema"], "lookback": p["zone_lookback"]}, "shift": cb}
+    long = [{"a": {**f, "shift": cb}, "op": "crosses_above", "b": {**sl, "shift": cb}},
+            *[{"a": {**f, "shift": k} if k else f, "op": ">", "b": {**sl, "shift": k} if k else sl} for k in range(cb)],
+            {"a": {"price": "close"}, "op": ">", "b": f}, {"a": {"price": "close"}, "op": ">", "b": sl},
+            {"a": zone, "op": "<=", "b": {"value": p["buy_zone"]}, "within": int(p["zone_within"]) + 1}]
+    ex = {"ema_trail": "ema_trail", "scale": "scale", "fixed_1r": "fixed_1r", "fixed_2r": "fixed_2r",
+          "time_1r": "time_1r", "zone": "cond"}.get(p["exit"], "fixed_1r")
+    out = {"entry_tf": p["entry_tf"], "long": long, "mirror": True, "directions": p["directions"],
+           "stop": {"type": "swing" if p["stop"] == "swing" else "atr", "bars": 10, "mult": p["stop_atr"], "max_atr": 4.0},
+           "exit": ex, "trail": p["fast"], "max_hold": p["max_hold"]}
+    if ex == "cond":
+        out["exit_long"] = [{"a": {"ind": "zone", "params": {"ema": p["zone_ema"], "lookback": p["zone_lookback"]}},
+                             "op": ">=", "b": {"value": p["sell_zone"]}}]
+    return out

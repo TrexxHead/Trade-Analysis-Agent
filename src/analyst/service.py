@@ -108,6 +108,9 @@ class KoraService:
         try:
             if refine.retrain_due(conn):
                 refine.retrain(conn, self.history_for_training)
+            if refine.research_due(conn):
+                from src.analyst.strategies import history
+                refine.run_research(conn, lambda m, tf, n: history(m, tf, n, self.source.name))
             refine.auto_tune(conn)
             refine.best_policy(conn)
         except Exception as e:
@@ -170,7 +173,7 @@ class KoraService:
             st = ST.active_for(settings, m["code"])
             if st and ST.mode_for(settings, m["code"]) != "kora":
                 tf = st["params"]["entry_tf"]
-                tfs[tf] = max(tfs.get(tf, 0), st["params"]["zone_lookback"] + st["params"]["slow"] + 150)
+                tfs[tf] = max(tfs.get(tf, 0), ST.bars_needed(st))
             jobs += [one(m, tf, n) for tf, n in tfs.items()]
         await asyncio.gather(*jobs)
         return out
@@ -204,6 +207,7 @@ class KoraService:
                 live = (quotes.get(code) or {}).get("price")
                 rep = analyse_instrument(m, candles.get(code, {}), exec_tf, fund, stats, live_price=live)
                 self.apply_strategy(rep, m, candles.get(code, {}), settings, stats)
+                self.apply_research(rep, m, candles.get(code, {}), settings)
                 self.size_candidates(rep, m, settings)
                 if rep.get("day_open"):
                     self.day_open[code] = rep["day_open"]
@@ -270,7 +274,7 @@ class KoraService:
         tf = st["params"]["entry_tf"]
         c = candles.get(tf) or []
         try:
-            rep["strategy"] = {"id": st["id"], "name": st["name"], "tf": tf, **ST.live_state(c, st)}
+            rep["strategy"] = {"id": st["id"], "name": st["name"], "tf": tf, **ST.live_state(c, st, meta)}
             mine = ST.live_candidates(c, st, meta, stats)
         except Exception as e:
             rep["strategy"] = {"id": st["id"], "name": st["name"], "tf": tf, "ok": False, "text": f"error: {e}"}
@@ -296,6 +300,29 @@ class KoraService:
             rep["headline"] = f"{st['name']}: no signal"
             rep["verdict"] = f"Your strategy has no signal on {tf}. {rep['strategy'].get('text', '')}"
             rep["verdict_tone"] = "r"
+
+    def apply_research(self, rep: dict, meta: dict, candles: dict, settings: dict):
+        """Strategies that passed Kora's out-of-sample research join Kora's own plans."""
+        if not settings.get("research_live", True) or rep.get("mode") == "mine":
+            return
+        from src.analyst import research
+        store = kv_get(self.conn, "research")
+        if not store:
+            return
+        try:
+            extra = research.research_candidates(candles, meta["code"], meta, store)
+        except Exception as e:
+            print(f"research candidates failed for {meta['code']}: {e}", file=sys.stderr)
+            return
+        d = rep["digits"]
+        for m in extra:
+            m["grade"] = "A" if m["confidence"] >= 70 else "B" if m["confidence"] >= 55 else "C"
+            m["distance_atr"] = 0
+            m["title"] = f"{m['setup_name']} — {m['direction'].upper()} {meta['code']}"
+            m["levels_text"] = (f"Entry {m['entry']:,.{d}f} (market) · SL {m['stop']:,.{d}f} · TP1 {m['tp1']:,.{d}f} ({m['rr1']}R) · "
+                                f"TP2 {m['tp2']:,.{d}f} ({m['rr2']}R) · Exit: {m['exit_rule']}")
+        if extra:
+            rep["candidates"] = sorted(rep["candidates"] + extra, key=lambda x: -x["confidence"])
 
     def size_candidates(self, rep: dict, meta: dict, settings: dict):
         """Attach lots / $ risk / margin / tradability and a 0-10 rating to every plan."""
@@ -506,7 +533,7 @@ class KoraService:
                         self.sync_history(days=7)
                     if tick % 900 == 0:  # ~every 30 min
                         await self.snapshot_trades()
-                    if tick % 10800 == 300 or kv_get(self.conn, "retrain_now"):  # ~every 6h (first ~10 min after start)
+                    if tick % 10800 == 300 or kv_get(self.conn, "retrain_now") or kv_get(self.conn, "research_now"):  # ~every 6h (first ~10 min after start)
                         await asyncio.to_thread(self.refine)
                 except Exception:
                     traceback.print_exc()

@@ -27,7 +27,8 @@ DEFAULT_SETTINGS = {
     "max_risk_pct": 3.0,
     "auto_tune": True,
     "strategies": None,           # your saved strategies (None = the built-in Boom/Crash ones)
-    "modes": {},                  # per instrument: kora | mine | both
+    "modes": {},
+    "research_live": True,        # let strategies that passed out-of-sample research feed Kora's plans                  # per instrument: kora | mine | both
     "active_strategy": {},        # per instrument: which saved strategy is switched on            # let Kora switch off setups that keep losing in paper trading          # a plan whose minimum lot risks more than this is marked not tradable             # {code: [setup ids Kora should not look for on that instrument]}
     "user_initial": "D",
     "pnl_mode": "usd",

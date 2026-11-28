@@ -74,7 +74,9 @@ def _strategy_rows(conn, meta: dict, notes: list) -> list[dict]:
         try:
             tf = st["params"]["entry_tf"]
             candles = ST.history(meta, tf, ST.bars_for_backtest(tf))
-            bt = ST.backtest(candles, st["params"], meta)
+            from src.analyst.research import spread_for
+            from src.store.db import get_quotes
+            bt = ST.run_backtest(candles, st, meta, spread_for(meta["code"], get_quotes(conn)))
             store.setdefault(st["id"], {})[meta["code"]] = ST.compact(bt)
             rows += ST.stats_rows(bt, st)
             notes.append(f"{meta['code']} · {st['name']}: {ST.summary(bt, st)}")
@@ -82,6 +84,35 @@ def _strategy_rows(conn, meta: dict, notes: list) -> list[dict]:
             notes.append(f"{meta['code']} · {st['name']}: backtest failed ({e})")
     kv_set(conn, "strategy_bt", store)
     return rows
+
+
+def research_due(conn) -> bool:
+    if kv_get(conn, "research_now"):
+        return True
+    last = (kv_get(conn, "research") or {}).get("ran_at")
+    return not last or _now() - datetime.fromisoformat(last) > timedelta(days=7)
+
+
+def run_research(conn, history_fn) -> dict:
+    """Weekly: re-test the whole strategy library on fresh data (history_fn(meta, tf, bars))."""
+    from src.analyst import research
+    from src.store.db import get_quotes
+    quotes = get_quotes(conn)
+    codes = watchlist_codes(get_settings(conn))
+    prev = {(r["code"], r["preset"]) for r in research.promoted(kv_get(conn, "research"))}
+    out = research.run_all(codes, history_fn, lambda c: research.spread_for(c, quotes), settings=get_settings(conn))
+    kv_set(conn, "research", out)
+    conn.execute("DELETE FROM kv WHERE key = 'research_now'")
+    conn.commit()
+    now_p = {(r["code"], r["preset"]): r for r in research.promoted(out)}
+    added = [r for k, r in now_p.items() if k not in prev]
+    dropped = [k for k in prev if k not in now_p]
+    add_decision(conn, f"RESEARCH — {len(now_p)} strateg{'y' if len(now_p) == 1 else 'ies'} pass out-of-sample testing", "b",
+                 "Weekly re-test of Kora's strategy library on fresh data (60/40 chronological split, spread included, "
+                 "multiple-testing adjusted, promote at 65%). "
+                 + (f"New: {', '.join(r['name'] + ' on ' + r['code'] for r in added)}. " if added else "")
+                 + (f"No longer passing (removed from live plans): {', '.join(f'{p} on {c}' for c, p in dropped)}." if dropped else ""))
+    return out
 
 
 def auto_tune(conn) -> list[str]:

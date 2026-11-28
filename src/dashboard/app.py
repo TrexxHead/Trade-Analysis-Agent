@@ -140,6 +140,14 @@ def _conn():
     return kora_connection()
 
 
+def _my_strategy_names(settings: dict) -> list[dict]:
+    try:
+        from src.analyst import strategies as ST
+        return [{"id": s["id"], "name": s["name"], "tf": s["params"].get("entry_tf", "M15")} for s in ST.saved(settings)]
+    except Exception:
+        return []
+
+
 @app.context_processor
 def _shell():
     conn = _conn()
@@ -149,13 +157,15 @@ def _shell():
     settings = get_settings(conn)
     search = [{"label": m["code"], "sub": m["name"], "kind": "instrument", "href": f"/kora/{m['code']}"} for m in instruments()]
     search += [{"label": v[0].split(" — ")[0], "sub": v[1], "kind": "page", "href": v[2]} for v in PAGES.values()]
+    search += [{"label": s["name"], "sub": f"Your strategy · {s['tf']} · open & backtest", "kind": "page",
+                "href": f"/strategies?s=my:{s['id']}"} for s in _my_strategy_names(settings)]
     search += [{"label": v[0], "sub": v[1], "kind": "page", "href": h} for h, v in
                (("/trades", SUBPAGES["trades"]), ("/mistakes", SUBPAGES["mistakes"]),
                 ("/backtests", SUBPAGES["backtests"]), ("/pnl-calendar", SUBPAGES["pnl"]))]
     last_dec = list_decisions(conn, limit=1)
     return {
         "PAGES": PAGES, "SUBPAGES": SUBPAGES, "NAV_GROUPS": NAV_GROUPS, "TABBED": TABBED, "feed": feed, "acct": acct, "D": D,
-        "settings": settings, "search_index": search, "n_positions": len(acct["positions"]),
+        "settings": settings, "search_index": search, "my_strategies": _my_strategy_names(settings), "n_positions": len(acct["positions"]),
         "mood": "content" if (acct["day_pl"] or 0) >= 0 else "concerned",
         "last_decision_id": last_dec[0]["id"] if last_dec else 0,
         "signed_in": bool(DASHBOARD_PASSWORD and session.get("auth")),
@@ -1118,6 +1128,8 @@ def api_settings():
                             "weekdays_only": bool(v.get("weekdays_only"))}
         elif k == "notify" and isinstance(v, dict):
             cur.setdefault("notify", {}).update({kk: bool(vv) for kk, vv in v.items()})
+        elif k == "research_live":
+            cur[k] = bool(v)
         elif k == "auto_tune":
             cur[k] = bool(v)
         elif k in ("risk_pct", "max_risk_pct"):

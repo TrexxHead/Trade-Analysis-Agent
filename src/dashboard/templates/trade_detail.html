@@ -19,7 +19,8 @@
     <h3 class="h3 lg">Your review</h3>
     <form method="post">
       <label class="fl" for="setup">Setup / strategy tag</label>
-      <input class="field" type="text" id="setup" name="setup" value="{{ trade.setup or '' }}" placeholder="e.g. Trend pullback, Breakout & retest, London breakout">
+      <input class="field" type="text" id="setup" name="setup" list="setup-tags" value="{{ trade.setup or '' }}" placeholder="Pick one of your strategies or Kora's setups">
+      <datalist id="setup-tags">{% for s in my_strategies %}<option value="{{ s.name }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
       <label class="fl" for="emotion">Emotional state</label>
       <select class="field" id="emotion" name="emotion">
         <option value="" {{ 'selected' if not trade.emotion }}>—</option>

@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="screen">
+  {% if my_strategies %}
+  <div class="panel">
+    <div class="ph"><h3 class="h3 lg">Your strategies</h3><span class="r">Click a name to backtest it in the Strategy Lab</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">{% for s in my_strategies %}<a class="obtn b" href="/strategies?s=my:{{ s.id }}&run=1"><i data-lucide="play"></i>{{ s.name }} <span class="faint">{{ s.tf }}</span></a>{% endfor %}
+      <a class="obtn" href="/strategies"><i data-lucide="plus"></i>Build a new one</a></div>
+  </div>
+  {% endif %}
   <div class="panel">
     <div class="ph"><h3 class="h3 lg">Run a backtest</h3><span class="r">Replays Kora's setups bar by bar on real history from your data source, with no lookahead</span></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;align-items:end">

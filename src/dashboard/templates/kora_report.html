@@ -36,7 +36,9 @@
     <div class="cand {{ c.grade }}" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="grade {{ c.grade }}">{{ c.grade }}</span>
-        <span style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#fff">{{ c.setup_name }}</span>
+        {% set src = c.source or 'kora' %}
+        <a href="/strategies?s={{ ('my:' ~ c.strategy_id) if src == 'mine' else ('lib:' ~ c.setup[4:]) if src == 'research' else ('kora:' ~ c.setup) }}&code={{ rep.code }}&run=1" title="Open and backtest this strategy" style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#fff">{{ c.setup_name }}</a>
+        <span class="tint {{ 'b' if src == 'mine' else 'g' if src == 'research' else 'm' }}">{{ {'mine': 'Your strategy', 'research': 'Research-proven', 'kora': 'Kora setup'}[src] }}</span>
         <span class="dir {{ c.direction }}">{{ c.direction|upper }}</span>
         <span class="tag">{{ c.timeframe }} · {{ c.entry_type }} entry</span>
         <span class="tag">{{ c.distance_atr }} ATR from price</span>

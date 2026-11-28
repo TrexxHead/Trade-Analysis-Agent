@@ -73,7 +73,7 @@
     {% endfor %}
   </div>
 </div>
-<datalist id="setup-tags">{% for s in setups if s != 'Untagged' %}<option value="{{ s }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
+<datalist id="setup-tags">{% for s in setups if s != 'Untagged' %}<option value="{{ s }}">{% endfor %}{% for s in my_strategies %}<option value="{{ s.name }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
 {% endblock %}
 {% block scripts %}
 <script>

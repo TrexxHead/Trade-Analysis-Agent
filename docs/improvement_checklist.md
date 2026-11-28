@@ -134,3 +134,17 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [x] "Boom/Crash (yours)" chart template with the zone line
 - [ ] Paper-trade your strategy's indicator exits live (EMA trail / opposite zone) - backtest covers them today
 - [ ] More strategy templates (tell Kora about your other strategies)
+
+## Strategy Lab, research & charts (2026-11-28)
+- [x] Navigation grouped into Markets / Strategy Lab / Portfolio, with section tabs where pages feed each other
+- [x] Build & test: every strategy (yours, 11 library methods, Kora's setups) listed by name; click to open, backtest, compare exit styles
+- [x] Visual rule builder: 26 indicators, crosses / above / below / rising / within-N / N-candles-ago, auto-mirrored sells, stops, 9 exits, session filter
+- [x] Your EMA/Stoch strategy translated exactly into the builder (verified trade-for-trade)
+- [x] Research engine: 60/40 out-of-sample, spread, bootstrap + Šidák haircut, family portfolios, promote at 65%, weekly re-test; passing strategies feed Kora
+- [x] Research page with published evidence and sources per instrument (docs/research.md)
+- [x] Chart engine v2: inertia panning, cursor-anchored wheel/pinch zoom, price/time axis scaling, keyboard, auto-loading history, full screen
+- [x] 12 drawing tools (trend, ray, extended, horizontal, horizontal ray, vertical, rectangle, Fibonacci, measure, text, long, short) with select/drag/reshape/recolour/delete, magnet
+- [x] One-click indicator mixes; strategy signals drawn on the chart with stats; build a strategy from the chart's indicators
+- [x] Your strategies in Journal tags, top-bar search, Backtests page, Kora breakdown source badges
+- [ ] Paper-trade indicator-based exits live (EMA trail / exit rules) - backtests cover them today
+- [ ] Walk-forward re-optimisation (rolling windows) as a second research mode

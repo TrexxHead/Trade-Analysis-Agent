@@ -49,6 +49,14 @@
       <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">Kora's take (Claude narratives)</div><div class="note">A written paragraph per breakdown, regenerated when the best setup changes. Uses Anthropic API tokens.{% if not llm_ok %} Needs ANTHROPIC_API_KEY.{% endif %}</div></div>
       <button class="switch {{ 'on' if settings.llm_narratives }}" data-setting="llm_narratives"><span></span></button>
     </div>
+    <div style="display:flex;align-items:center;gap:13px;padding:14px 4px 4px">
+      <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">Research-proven strategies feed Kora</div><div class="note">Strategies that pass Kora's out-of-sample research (≥65% confidence after costs and the luck haircut) add their signals to Kora's plans. <a href="/research">See the research</a>.</div></div>
+      <button class="switch {{ 'on' if settings.research_live }}" data-setting="research_live"><span></span></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:13px;padding:14px 4px 4px">
+      <div><div style="font-family:var(--font-display);font-weight:600;font-size:12.5px">Auto-tune</div><div class="note">Let Kora switch off setups that keep losing in paper trading (logged, reversible).</div></div>
+      <button class="switch {{ 'on' if settings.auto_tune }}" data-setting="auto_tune"><span></span></button>
+    </div>
     <div style="margin-top:14px;display:flex;gap:8px"><button class="btn-pri" id="s-save">Save</button></div>
   </div>
 

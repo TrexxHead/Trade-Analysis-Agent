@@ -63,17 +63,29 @@ PAGES = {
     "dashboard": ("Dashboard", "Portfolio overview — live", "/", "layout-dashboard"),
     "charts": ("Charts", "Multi-timeframe workspace", "/charts", "candlestick-chart"),
     "kora": ("Kora", "Market analyst · setups & reasoning · never trades", "/kora", "bot"),
-    "lab": ("Lab", "Kora's paper trading & self-refinement", "/lab", "flask-conical"),
-    "strategies": ("Strategies", "Your saved strategies vs Kora", "/strategies", "git-branch"),
+    "scanner": ("Scanner", "Cross-market opportunities", "/scanner", "radar"),
+    "calendar": ("Economic Calendar", "This week's releases", "/calendar", "calendar-clock"),
+    "strategies": ("Build & test", "Every strategy in one place: build, backtest, compare", "/strategies", "git-branch"),
+    "research": ("Research", "What has actually worked on your instruments, out of sample", "/research", "microscope"),
+    "lab": ("Paper trading", "Kora's paper account & self-refinement", "/lab", "flask-conical"),
+    "backtests": ("Kora setups", "Replay Kora's built-in setups on real history", "/backtests", "history"),
     "positions": ("Positions", "Open trades & history", "/positions", "layers"),
     "risk": ("Risk", "Exposure, limits & stress", "/risk", "shield"),
     "analytics": ("Analytics", "Quant performance review", "/analytics", "bar-chart-3"),
     "journal": ("Journal", "Auto-journaled trades", "/journal", "notebook-pen"),
-    "scanner": ("Scanner", "Cross-market opportunities", "/scanner", "radar"),
-    "calendar": ("Economic Calendar", "This week's releases", "/calendar", "calendar-clock"),
     "insights": ("AI Insights", "Ask Kora anything", "/insights", "sparkles"),
     "settings": ("Settings", "Data, alerts & Kora", "/settings", "settings"),
 }
+# Sidebar sections. Sections listed in TABBED also get a tab strip on each of
+# their pages, because those pages feed each other.
+NAV_GROUPS = [
+    ("", ["dashboard"]),
+    ("Markets", ["charts", "kora", "scanner", "calendar"]),
+    ("Strategy Lab", ["strategies", "research", "lab", "backtests"]),
+    ("Portfolio", ["positions", "risk", "analytics", "journal"]),
+    ("", ["insights", "settings"]),
+]
+TABBED = {"Strategy Lab", "Portfolio"}
 SUBPAGES = {
     "trades": ("Trades", "Full trade history"), "mistakes": ("Mistakes", "Rule violations"),
     "backtests": ("Backtests", "Replay Kora's setups on real history"), "pnl": ("P&L Calendar", "Daily P&L heatmap"),
@@ -142,7 +154,7 @@ def _shell():
                 ("/backtests", SUBPAGES["backtests"]), ("/pnl-calendar", SUBPAGES["pnl"]))]
     last_dec = list_decisions(conn, limit=1)
     return {
-        "PAGES": PAGES, "SUBPAGES": SUBPAGES, "feed": feed, "acct": acct, "D": D,
+        "PAGES": PAGES, "SUBPAGES": SUBPAGES, "NAV_GROUPS": NAV_GROUPS, "TABBED": TABBED, "feed": feed, "acct": acct, "D": D,
         "settings": settings, "search_index": search, "n_positions": len(acct["positions"]),
         "mood": "content" if (acct["day_pl"] or 0) >= 0 else "concerned",
         "last_decision_id": last_dec[0]["id"] if last_dec else 0,
@@ -314,41 +326,144 @@ def api_lab():
 
 @app.route("/strategies")
 def strategies_page():
+    from src.analyst import indicators as IND
+    from src.analyst import library as L
+    from src.analyst import research as RS
+    from src.analyst import rules as R
     from src.analyst import strategies as ST
     from src.analyst.config import watchlist_codes
+    from src.analyst.setups import SETUP_NAMES
     conn = _conn()
     settings = get_settings(conn)
     reps = D.watched_analyses(conn)
     strats = ST.saved(settings)
+    wl = watchlist_codes(settings)
     rows = []
-    for code in watchlist_codes(settings):
+    for code in wl:
         act = ST.active_for(settings, code)
         rows.append({"code": code, "mode": ST.mode_for(settings, code), "active": act["id"] if act else "",
                      "state": (reps.get(code) or {}).get("strategy")})
     store = kv_get(conn, "strategy_bt", {}) or {}
-    summaries = {s["id"] + code: ST.summary(bt, s) for s in strats for code, bt in (store.get(s["id"]) or {}).items()}
-    return render_template("strategies.html", active="strategies", rows=rows, strategies=strats, templates=ST.TEMPLATES,
-                           exits=ST.EXITS, bt_store=store, summaries=summaries, bt_codes=watchlist_codes(settings))
+    research = kv_get(conn, "research") or {}
+    passed = {}
+    for code, d in (research.get("instruments") or {}).items():
+        for r in d.get("rows", []):
+            if r.get("promoted"):
+                passed.setdefault(r["preset"], []).append(f"{code} {r['tf']}")
+    lib = [{"id": p["id"], "name": p["name"], "family": p["family"], "evidence": p["evidence"], "variants": len(p["variants"]),
+            "passed": passed.get(p["id"], [])} for p in L.PRESETS]
+    mine = [{"id": s["id"], "name": s["name"], "template": s["template"], "instruments": s.get("instruments") or [],
+             "params": s["params"], "notes": s.get("notes", ""), "passed": passed.get("my:" + s["id"], []),
+             "rules": ST.to_rules(s) if s["template"] == "ema_stoch" else None} for s in strats]
+    boot = {"mine": mine, "library": lib, "kora": [{"id": k, "name": v} for k, v in SETUP_NAMES.items()],
+            "catalog": IND.catalog(), "exits": R.EXITS, "ops": R.OPS, "watchlist": wl,
+            "codes": [m["code"] for m in instruments(include_disabled=True)],
+            "stored": {sid: {c: {"ran_at": bt.get("ran_at"), "best": bt.get("best")} for c, bt in d.items()} for sid, d in store.items()},
+            "ema_exits": ST.EXITS, "templates": ST.TEMPLATES}
+    return render_template("strategies.html", active="strategies", rows=rows, strategies=strats, boot=boot)
+
+
+_RESEARCH_JOB = {"running": False, "progress": "", "error": None}
+
+
+@app.route("/research")
+def research_page():
+    from src.analyst import library as L
+    from src.analyst import research as RS
+    conn = _conn()
+    store = kv_get(conn, "research") or {}
+    insts = []
+    for code, d in (store.get("instruments") or {}).items():
+        insts.append({"code": code, **d, "evidence": RS.evidence_for(code),
+                      "passed": [r for r in d.get("rows", []) if r.get("promoted")]})
+    return render_template("research.html", active="research", store=store, insts=insts, job=_RESEARCH_JOB,
+                           method=RS, n_presets=len(L.PRESETS), live=get_settings(conn).get("research_live", True))
+
+
+@app.route("/api/research", methods=["GET", "POST"])
+def api_research():
+    import threading
+    if request.method == "GET":
+        return jsonify(_RESEARCH_JOB)
+    if _RESEARCH_JOB["running"]:
+        return jsonify({"ok": False, "message": "Research is already running"})
+
+    def job():
+        from src.analyst import refine
+        from src.analyst.strategies import history
+        _RESEARCH_JOB.update(running=True, progress="Fetching history…", error=None)
+        try:
+            c2 = kora_connection()
+            import src.analyst.research as RS
+            orig = RS.evaluate
+
+            def tracked(code, *a, **k):
+                _RESEARCH_JOB["progress"] = f"Testing strategies on {code}…"
+                return orig(code, *a, **k)
+            RS.evaluate = tracked
+            try:
+                refine.run_research(c2, lambda m, tf, n: history(m, tf, n))
+            finally:
+                RS.evaluate = orig
+            _RESEARCH_JOB["progress"] = "Done"
+        except Exception as e:
+            _RESEARCH_JOB["error"] = str(e)
+        finally:
+            _RESEARCH_JOB["running"] = False
+    threading.Thread(target=job, daemon=True).start()
+    return jsonify({"ok": True, "message": "Research started - this takes a few minutes. You can keep using the hub."})
+
+
+@app.route("/api/preset")
+def api_preset():
+    from src.analyst import library as L
+    from src.analyst import rules as R
+    pid = request.args.get("id") or ""
+    if pid not in L.BY_ID:
+        return jsonify({"error": "unknown preset"}), 404
+    return jsonify({"params": R.norm(L.preset_params(pid, int(request.args.get("variant") or 0), request.args.get("tf") or "H1")),
+                    **{k: L.BY_ID[pid][k] for k in ("name", "family", "evidence")}})
+
+
+@app.route("/api/indicators")
+def api_indicators():
+    from src.analyst import indicators as IND
+    return jsonify(IND.catalog())
+
+
+def _bt_summary(bt: dict, strategy: dict) -> str:
+    from src.analyst import strategies as ST
+    return ST.summary(bt, strategy)
 
 
 @app.route("/api/strategies", methods=["POST"])
 def api_strategies():
+    import copy
     import re
     import uuid as _uuid
+    from src.analyst import library as L
+    from src.analyst import rules as R
     from src.analyst import strategies as ST
     from src.analyst.config import by_code
+    from src.analyst.research import spread_for
+    from src.store.db import get_quotes
     conn = _conn()
     body = request.get_json(force=True) or {}
     cur = kv_get(conn, "settings", {}) or {}
     settings = get_settings(conn)
-    strats = ST.saved(settings)
+    strats = [copy.deepcopy(s) for s in ST.saved(settings)]
     act, sid = body.get("action"), body.get("id")
     find = next((s for s in strats if s["id"] == sid), None)
 
-    def save(msg):
+    def save(msg, **extra):
         cur["strategies"] = strats
         kv_set(conn, "settings", cur)
-        return jsonify({"ok": True, "message": msg})
+        return jsonify({"ok": True, "message": msg, **extra})
+
+    def clean_instruments(v):
+        if isinstance(v, list):
+            v = ",".join(v)
+        return [c for c in re.split(r"[,\s]+", (v or "").upper()) if c][:20]
 
     if act == "mode":
         if body.get("mode") not in ("kora", "mine", "both"):
@@ -360,6 +475,38 @@ def api_strategies():
         cur.setdefault("active_strategy", {})[body["code"]] = sid or ""
         kv_set(conn, "settings", cur)
         return jsonify({"ok": True, "message": f"{body['code']}: " + (f"using {find['name']}" if find else "no strategy")})
+    if act == "create":
+        nid = "s_" + _uuid.uuid4().hex[:8]
+        src = body.get("from", "blank")
+        if src == "preset" and body.get("preset") in L.BY_ID:
+            st = L.as_strategy(body["preset"], int(body.get("variant") or 0), body.get("tf") or "M15", sid=nid)
+            st["name"] = (body.get("name") or L.BY_ID[body["preset"]]["name"] + " (mine)")[:48]
+            st.pop("source", None)
+        elif src == "convert" and find:
+            st = {"id": nid, "name": (find["name"] + " (rules)")[:48], "template": "rules", "instruments": list(find.get("instruments") or []),
+                  "params": ST.to_rules(find), "notes": find.get("notes", "")}
+        else:
+            st = {"id": nid, "name": (body.get("name") or "New strategy")[:48], "template": "rules", "instruments": [],
+                  "notes": "", "params": {"entry_tf": "M15", "mirror": True, "long": [
+                      {"a": {"ind": "ema", "params": {"period": 20}}, "op": "crosses_above", "b": {"ind": "ema", "params": {"period": 50}}}],
+                      "stop": {"type": "atr", "mult": 1.5}, "exit": "fixed_r", "tp_r": 1.5}}
+        if body.get("params"):
+            st["params"] = body["params"]
+        strats.append(st)
+        return save(f"Created {st['name']}", id=nid)
+    if act == "save_rules" and find:
+        params = body.get("params") or {}
+        try:
+            R.norm(params)
+            for c in (params.get("long") or []) + (params.get("short") or []):
+                assert c.get("op") in R.OPS
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"Those rules don't parse: {e}"}), 400
+        if not params.get("long") and not params.get("short"):
+            return jsonify({"ok": False, "message": "Add at least one entry rule"}), 400
+        find.update({"template": "rules", "params": params, "name": (body.get("name") or find["name"]).strip()[:48],
+                     "notes": (body.get("notes") or "").strip()[:600], "instruments": clean_instruments(body.get("instruments"))})
+        return save(f"Saved {find['name']}")
     if act == "save" and find:
         d = body.get("data") or {}
         num = {"fast": (2, 400), "slow": (3, 800), "zone_ema": (1, 200), "zone_lookback": (30, 2000), "buy_zone": (0, 50),
@@ -378,35 +525,76 @@ def api_strategies():
             return jsonify({"ok": False, "message": "The fast EMA must be shorter than the slow EMA"}), 400
         find["name"] = (d.get("name") or find["name"]).strip()[:48]
         find["notes"] = (d.get("notes") or "").strip()[:600]
-        find["instruments"] = [c for c in re.split(r"[,\s]+", (d.get("instruments") or "").upper()) if c][:20]
+        find["instruments"] = clean_instruments(d.get("instruments"))
         return save(f"Saved {find['name']}. Run a backtest to see how it does.")
     if act == "duplicate" and find:
-        strats.append({**find, "id": "s_" + _uuid.uuid4().hex[:8], "name": (find["name"] + " (copy)")[:48],
-                       "params": dict(find["params"]), "instruments": []})
-        return save("Duplicated - tweak the copy and compare the backtests")
+        strats.append({**copy.deepcopy(find), "id": "s_" + _uuid.uuid4().hex[:8], "name": (find["name"] + " (copy)")[:48], "instruments": []})
+        return save("Duplicated - tweak the copy and compare the backtests", id=strats[-1]["id"])
     if act == "delete" and find:
         strats[:] = [s for s in strats if s["id"] != sid]
         store = kv_get(conn, "strategy_bt", {}) or {}
         store.pop(sid, None)
         kv_set(conn, "strategy_bt", store)
         return save(f"Deleted {find['name']}")
-    if act == "backtest" and find:
-        meta = by_code().get(body.get("code") or "")
+    if act == "backtest":
+        meta = by_code().get((body.get("code") or "").upper())
         if not meta:
-            return jsonify({"ok": False, "message": "Unknown instrument"}), 400
+            return jsonify({"ok": False, "message": "Pick an instrument"}), 400
+        if body.get("params") is not None:        # unsaved builder state
+            target = {"id": sid or "draft", "name": body.get("name") or "Draft", "template": "rules", "params": R.norm(body["params"])}
+        elif body.get("preset") in L.BY_ID:
+            target = L.as_strategy(body["preset"], int(body.get("variant") or 0), body.get("tf") or "M15")
+            target["params"] = R.norm(target["params"])
+        elif find:
+            target = find
+        else:
+            return jsonify({"ok": False, "message": "Unknown strategy"}), 400
         try:
-            tf = find["params"]["entry_tf"]
-            candles = ST.history(meta, tf, ST.bars_for_backtest(tf))
-            from src.analyst.research import spread_for
-            from src.store.db import get_quotes
-            bt = ST.run_backtest(candles, find, meta, spread_for(meta["code"], get_quotes(conn)))
+            tf = target["params"]["entry_tf"]
+            candles = ST.history(meta, tf, int(body.get("bars") or ST.bars_for_backtest(tf)))
+            bt = ST.run_backtest(candles, target, meta, spread_for(meta["code"], get_quotes(conn)))
         except Exception as e:
             return jsonify({"ok": False, "message": f"Backtest failed: {e}"}), 500
-        store = kv_get(conn, "strategy_bt", {}) or {}
-        store.setdefault(sid, {})[meta["code"]] = ST.compact(bt)
-        kv_set(conn, "strategy_bt", store)
-        return jsonify({"ok": True, "message": ST.summary(bt, find)})
+        if find and body.get("params") is None:
+            store = kv_get(conn, "strategy_bt", {}) or {}
+            store.setdefault(sid, {})[meta["code"]] = ST.compact(bt)
+            kv_set(conn, "strategy_bt", store)
+        return jsonify({"ok": True, "message": _bt_summary(bt, target), "bt": ST.compact(bt)})
+    if act == "stored" and find:
+        bt = ((kv_get(conn, "strategy_bt", {}) or {}).get(sid) or {}).get((body.get("code") or "").upper())
+        return jsonify({"ok": bool(bt), "bt": bt, "message": _bt_summary(bt, find) if bt else "No stored backtest"})
     return jsonify({"ok": False, "message": "Unknown action"}), 400
+
+
+@app.route("/api/strategy-marks")
+def api_strategy_marks():
+    """Entries/exits of a strategy on the chart's candles (yours, a library preset, or a draft)."""
+    from src.analyst import library as L
+    from src.analyst import rules as R
+    from src.analyst import strategies as ST
+    from src.analyst.research import spread_for
+    from src.store.db import get_quotes
+    conn = _conn()
+    code = (request.args.get("code") or "").upper()
+    meta = by_code().get(code)
+    ref = request.args.get("ref") or ""
+    tf = request.args.get("tf") or "M15"
+    if not meta:
+        return jsonify({"error": "unknown instrument"}), 400
+    if ref.startswith("lib:"):
+        _, pid, v = (ref.split(":") + ["0"])[:3]
+        params = L.preset_params(pid, int(v or 0), tf)
+        name = L.BY_ID[pid]["name"]
+    else:
+        st = ST.by_id(get_settings(conn)).get(ref)
+        if not st:
+            return jsonify({"error": "unknown strategy"}), 404
+        params, name = {**ST.to_rules(st), "entry_tf": tf}, st["name"]
+    from src.live.sources import fetch_candles_sync
+    candles = fetch_candles_sync(meta, tf, int(request.args.get("count") or 1500))
+    out = R.signals_for_chart(candles, params, meta, spread_for(code, get_quotes(conn)))
+    out["name"] = name
+    return jsonify(out)
 
 
 @app.route("/positions")
@@ -651,7 +839,7 @@ def backtests_view():
                          "ending_balance": d.get("ending_balance"), "kind": d.get("kind", "csv"), "tf": d.get("tf"),
                          "days": d.get("days")})
     from src.analyst.setups import SETUP_NAMES
-    return render_template("backtests.html", active="analytics", sub="backtests", runs=runs, catalog=instruments(),
+    return render_template("backtests.html", active="backtests", runs=runs, catalog=instruments(),
                            setup_names=SETUP_NAMES, watched=__import__("src.analyst.config", fromlist=["x"]).watchlist_codes())
 
 
@@ -660,9 +848,9 @@ def backtest_detail(filename):
     path = BACKTESTS_DIR / Path(filename).name
     d = json.loads(path.read_text()) if path.exists() else {}
     if d.get("kind") == "kora":
-        return render_template("backtest_kora.html", active="analytics", sub="backtests", filename=filename, d=d,
+        return render_template("backtest_kora.html", active="backtests", sub="backtests", filename=filename, d=d,
                                curve=D.svg_path([0.0] + d.get("curve", [])), meta=by_code().get(d.get("code"), {}))
-    return render_template("backtest_detail.html", active="analytics", sub="backtests", filename=filename, data=d)
+    return render_template("backtest_detail.html", active="backtests", sub="backtests", filename=filename, data=d)
 
 
 @app.route("/api/backtest", methods=["POST"])

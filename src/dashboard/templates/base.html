@@ -64,11 +64,14 @@
       </div>
     </div>
     <nav class="nav">
-      {% for key, p in PAGES.items() %}
+      {% for title, keys in NAV_GROUPS %}
+      {% if title %}<div class="nav-h">{{ title }}</div>{% elif not loop.first %}<div class="nav-sep"></div>{% endif %}
+      {% for key in keys %}{% set p = PAGES[key] %}
       <a href="{{ p[2] }}" class="{{ 'on' if active == key }}" title="{{ p[0] }}">
         <i data-lucide="{{ p[3] }}"></i><span>{{ {'kora': 'Kora Agent', 'calendar': 'Calendar'}.get(key, p[0].split(' — ')[0]) }}</span>
         {% if key == 'positions' and n_positions %}<span class="badge" data-live-count="positions">{{ n_positions }}</span>{% endif %}
       </a>
+      {% endfor %}
       {% endfor %}
     </nav>
     <div class="acct">
@@ -119,6 +122,11 @@
     {% elif feed.online and not feed.broker_connected %}<div class="sim-banner">MT5 is open but not connected to the Deriv server, so prices aren't updating. Check your internet connection and MT5 login.</div>{% endif %}
     {% if feed.sim %}<div class="sim-banner">SIMULATED DATA — the Kora service is running with KORA_DATA_SOURCE=sim. Prices, positions and account figures are not real.</div>{% endif %}
     <main>
+      {% for title, keys in NAV_GROUPS %}{% if title in TABBED and active in keys %}
+      <div class="section-tabs"><span class="st-title">{{ title }}</span>
+        {% for key in keys %}<a href="{{ PAGES[key][2] }}" class="{{ 'on' if active == key }}"><i data-lucide="{{ PAGES[key][3] }}"></i>{{ PAGES[key][0] }}</a>{% endfor %}
+      </div>
+      {% endif %}{% endfor %}
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}<div style="padding:16px 22px 0;display:flex;flex-direction:column;gap:6px">
           {% for category, message in messages %}<span class="chipx {{ category }}" style="width:fit-content">{{ message }}</span>{% endfor %}

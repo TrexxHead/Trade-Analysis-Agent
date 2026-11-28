@@ -97,7 +97,16 @@ def tick(symbol: str) -> dict | None:
     mt5 = connect()
     t = mt5.symbol_info_tick(symbol)
     if t is None or not t.bid:
-        return None
+        # a symbol just added to Market Watch has no tick until the server streams one
+        import time
+        mt5.symbol_select(symbol, True)
+        for _ in range(10):
+            time.sleep(0.3)
+            t = mt5.symbol_info_tick(symbol)
+            if t is not None and t.bid:
+                break
+        else:
+            return None
     # MT5 charts and Market Watch show the bid, so the hub does too
     return {"bid": t.bid, "ask": t.ask, "price": t.bid, "time": _iso(t.time)}
 

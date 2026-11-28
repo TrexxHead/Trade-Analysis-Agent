@@ -10,7 +10,11 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 
-from metaapi_cloud_sdk import MetaApi
+
+
+def MetaApi(token):  # noqa: N802 - lazy, so MT5/Deriv users don't need the optional MetaApi SDK installed
+    from metaapi_cloud_sdk import MetaApi as _MetaApi
+    return _MetaApi(token)
 
 OPEN_ENTRY_TYPES = {"DEAL_ENTRY_IN"}
 CLOSE_ENTRY_TYPES = {"DEAL_ENTRY_OUT", "DEAL_ENTRY_OUT_BY"}

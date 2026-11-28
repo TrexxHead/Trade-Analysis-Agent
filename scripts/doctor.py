@@ -46,6 +46,12 @@ def main():
         a = mt5_local.account()
         ok(f"Connected to terminal - account {a.get('login')} on {a.get('server')} ({a.get('type')}), "
            f"balance {a.get('balance')} {a.get('currency')}")
+        h = mt5_local.health()
+        if h.get("broker"):
+            ok("Terminal is connected to the broker's trade server")
+        else:
+            bad("Terminal is open but NOT connected to the broker (bottom-right of MT5 shows 'No connection' / "
+                "'Invalid account'?) - log in again in MT5: File > Login to Trade Account")
         for code in wl:
             m = cat.get(code)
             try:

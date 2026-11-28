@@ -1,34 +1,151 @@
-# Trade Analysis Agent
+# Trade Analysis Agent — Kora Terminal
 
-Pulls your trade history from Deriv and MetaTrader (via MetaApi.cloud), checks
-every trade against your own trading-plan rules, and builds the data behind
-daily/weekly/monthly reports (mistakes made, progress trends, stats). It can
-also scan for a baseline trend-following setup and propose trades — but it
-never places one without your explicit approval, and it refuses to execute
-anything on a non-demo account unless you override that on purpose. See
-[Trading proposals](#trading-proposals-propose--approve--execute) below.
+Two things in one repo:
 
-TradingView has no API for pulling executed trade history on standard
-accounts, so it isn't an ingestion source here — it stays your charting/alert
-tool. If you want planned setups tracked too, TradingView alert webhooks can
-be added later as a separate "planned vs. actual" comparison.
-
-## How it fits together
+1. **Kora, a market-analysis agent.** Kora watches your instruments (Deriv
+   synthetic indices, gold, silver, EURUSD and GBPUSD on Deriv MT5) and, every
+   cycle, writes a full breakdown of each one: multi-timeframe technicals
+   (D1/H4/H1/M15), key levels, the fundamental picture (economic calendar,
+   event risk, cross-asset context), and ranked **entry plans** with exact
+   entry, stop and two targets, reward:risk, why the plan qualifies, what argues
+   against it, and what invalidates it. Each setup's confidence is **calibrated
+   against how that setup has actually performed on that instrument's
+   history**. When something qualifies, Kora alerts you (Telegram/webhook).
+   **Kora never places, modifies or closes a trade.** It assesses; you decide
+   and execute.
+2. **Kora Terminal, your trading hub.** A dark, data-dense web app with 11
+   screens: Dashboard, Charts, Kora Agent, Positions, Risk, Analytics,
+   Journal, Scanner, Economic Calendar, AI Insights (chat with Kora) and
+   Settings. It's built on your real MT5 account data, trade history and
+   Kora's analysis.
 
 ```
-Deriv API  ─┐
-            ├─> ingest ─> SQLite (data/trades.db) ─> analysis (stats + rule checks) ─> report data (JSON)
-MetaApi.cloud┘                                                                              │
-(MT4/MT5)                                                                                   v
-                                                                        Claude turns this into your
-                                                                        actual daily/weekly/monthly
-                                                                        report (chat dashboard, docx, pdf)
+                 ┌──────────────── scripts/run_kora.py (one process) ────────────────┐
+MetaApi (MT5) ──>│ streaming quotes/positions/account ──> SQLite (every 2s)          │
+  candles  ─────>│ every N min: technicals + setups + calibration + fundamentals     │──> data/trades.db ──> Kora Terminal
+ForexFactory ───>│ calendar · correlations · journal chart snapshots · alerts        │                       (scripts/run_dashboard.py)
+                 └───────────────────────────────────────────────────────────────────┘
+Deriv / MetaApi deal history ──> scripts/run_ingest.py ──> trades, rule checks, analytics, journal
 ```
 
-The scripts in this repo only fetch and crunch numbers. Generating the
-polished report itself (the docx/pdf/dashboard) is done by Claude reading
-`reports_out/<period>.json` — that keeps the report writing flexible instead
-of baking a rigid template into code.
+### Real data — free
+
+Kora works with two free data sources and picks one automatically
+(`KORA_DATA_SOURCE=auto`):
+
+1. **Your MT5 terminal (recommended).** Install and open the Deriv MT5 app
+   on this PC and log in. Kora reads live prices, candles, your positions,
+   balance and trade history from it through MetaQuotes' official
+   `MetaTrader5` Python package. It's local, free, needs no API key, and is
+   read-only, so Kora never sends orders. Windows only. Make sure every
+   instrument in `config/instruments.yaml` shows in MT5's Market Watch (right
+   click → Show All).
+2. **Deriv's public feed (fallback).** Deriv's free WebSocket API gives live
+   prices and candles for all 11 instruments with no account needed. Kora
+   uses it automatically when MT5 isn't open. It can't see positions or
+   balances.
+
+MetaApi (`METAAPI_TOKEN`) is still supported but optional. The only paid
+piece is the optional Claude chat/narratives (`ANTHROPIC_API_KEY`).
+Telegram alerts are free.
+
+```bash
+python scripts/train_kora.py           # calibrate on real history from MT5 or Deriv
+python scripts/run_kora.py             # live analysis
+python scripts/run_dashboard.py        # http://127.0.0.1:5000
+python scripts/run_ingest.py --source mt5 --days-back 90   # your closed trades for Journal/Analytics
+```
+
+### Not seeing real data?
+
+Run `python scripts/doctor.py`. It checks the MT5 package, the terminal
+connection, each watchlist symbol and Deriv's feed, then tells you which
+source Kora will use. The usual causes:
+- an old simulated Kora window still running (close every terminal window,
+  then start Kora again);
+- `KORA_DATA_SOURCE=sim` left in `.env`;
+- the MT5 app closed or logged out.
+
+When Kora starts on real data after a simulated session, it automatically
+clears the simulated leftovers.
+
+### Watchlist, charts and backtests
+
+- **Watchlist:** Settings → Watchlist, or the ★ on any Scanner row. Add any
+  other MT5 symbol there too. Kora analyses only what you watch.
+- **Charts:** SMA/EMA/Bollinger/VWAP/Donchian on price, and RSI/MACD/ATR/
+  Stochastic/Volume panes. Save indicator sets as named templates (one can
+  be the default). Your MT5 trades and Kora's plan are drawn on the chart.
+- **Backtests:** Analytics → Backtests → *Run a backtest* replays Kora's
+  setups on real history for any instrument, timeframe and period.
+- **Account mirror:** with MT5 connected, Kora syncs your closed trades every
+  5 minutes, so the Dashboard, Positions → History, Journal and Analytics
+  reflect your live account.
+
+### Quick start
+
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env            # nothing required: open MT5, or Kora falls back to Deriv's free feed
+python scripts/train_kora.py    # calibrate setups on 180 days of history (a few minutes)
+python scripts/run_kora.py      # Kora: live feed + analysis every 15 min + alerts
+python scripts/run_dashboard.py # hub at http://127.0.0.1:5000
+```
+
+No broker credentials yet? Preview everything on simulated data (it's
+clearly labelled SIMULATED on every screen):
+
+```bash
+KORA_DATA_SOURCE=sim python scripts/run_kora.py
+KORA_DATA_SOURCE=sim python scripts/run_dashboard.py
+```
+
+Single breakdown in the terminal: `python scripts/analyse.py XAUUSD`.
+
+## Kora — how the analysis works
+
+Kora runs this every cycle for every instrument in `config/instruments.yaml`:
+
+| Layer | What Kora does | Code |
+|---|---|---|
+| Technicals | Per timeframe: EMA 20/50/200 stack and slope, RSI, MACD momentum, ADX/DI, ATR and its percentile (volatility regime), Bollinger squeeze, session VWAP, swing structure (HH/HL vs LH/LL), clustered support/resistance with touch counts. Weighted multi-timeframe bias plus a regime classification (Trending / Range / Volatile / Bullish / Bearish). | `src/analyst/ta.py`, `technical.py` |
+| Setups | Five detectors on the execution timeframe (H1) with the H4 trend as a filter: **trend pullback**, **breakout & retest**, **range reversion**, **liquidity sweep**, **Asia-range (London) breakout** (gold/FX only). Each produces a complete plan: entry (market/limit), structure-based stop, TP1 at the next opposing level (≥1.2R) and TP2, plus confluence, objections, trigger and invalidation. Boom/Crash plans against the spike direction are penalised. | `src/analyst/setups.py` |
+| Calibration ("training") | `train_kora.py` replays every detector bar by bar over history with no lookahead (swings count only once confirmed; limit orders must actually fill; a bar that hits both stop and target counts as a loss). That gives a hit rate and expectancy per instrument, setup and direction. Live confidence = rule score × track record, with small samples shrunk toward break-even. | `src/analyst/calibration.py` |
+| Fundamentals | ForexFactory calendar: high-impact releases within 2h for the instrument's currencies flag **event risk** and cut confidence. Consensus vs prior is read per indicator type (inflation, jobs, growth, PMIs, rates…) into a currency tilt, then translated to the instrument (USD strength is a gold/silver headwind). Cross-asset context: EURUSD as an inverse-USD proxy for metals, plus whether the peer instrument confirms the move (gold↔silver, EURUSD↔GBPUSD). Synthetics are explicitly marked "no fundamentals" because Deriv's RNG drives them. | `src/analyst/fundamentals.py` |
+| Output | A report per instrument (bias, conviction, regime, per-TF table, key levels, fundamentals, ranked plans graded A ≥70% / B 55–69% / watch-only <55%, reasoning chain, verdict), an explainable **decision-log** entry, alerts, and optionally a written "Kora's take" from Claude. | `src/analyst/engine.py`, `service.py`, `llm.py`, `notify.py` |
+
+**Honest limits.** The five setups are well-known discretionary patterns
+encoded as rules, not a proven edge. Calibration tells you how each one
+*has* behaved on your instruments; it can't promise how it will behave.
+The calendar feed has no "actual" figures, so Kora reads expectations and
+event timing, not post-release surprises. Treat A-grades as "worth your
+attention", never as instructions.
+
+### Controlling Kora
+
+The **Kora Agent** page has Run / Pause / Stop (Run = analyse + alert,
+Pause = analyse with alerts muted, Stop = live feed only) plus **Analyse
+now**. **Settings** controls the interval, alert threshold, which
+instruments are analysed, which alerts fire, and whether Claude writes
+narratives. The service reads all of these live, with no restart needed.
+
+### Alerts
+
+Set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` and/or `KORA_WEBHOOK_URL`
+(Discord/Slack-style) in `.env`. Kora sends: setups at or above your
+threshold (with entry, SL, TPs, reasons, track record and invalidation),
+optional watch-list setups, high-impact news 15 min out, and positions with
+no stop-loss. Alerts are de-duplicated. Use **Settings → Send test alert**
+to check the wiring.
+
+### Ask Kora (AI Insights)
+
+The chat sends Claude a context snapshot: your account, open positions and
+risk model, performance stats, rule violations, recent trades, the latest
+analysis for every instrument, and recent decisions. You can ask "what's the
+best setup on the board?", "full gold breakdown", "what was my biggest
+mistake this week?". Needs `ANTHROPIC_API_KEY`.
 
 ## Setup
 
@@ -86,7 +203,12 @@ ask for the report — it has everything needed (stats, rule violations,
 trend vs. the previous period) to write the narrative and format it as a
 chat artifact, Word doc, or PDF.
 
-## Trading proposals (propose -> approve -> execute)
+## Legacy: trading proposals (propose -> approve -> execute)
+
+> Superseded by Kora's analysis-only entry plans. The dashboard no longer has
+> approve/execute buttons; the CLI below remains for anyone who still wants
+> it, and it is still demo-gated.
+
 
 `config/strategy.yaml` defines a baseline trend-following-pullback strategy
 (price above/below both EMAs for trend, pulled back near the fast EMA,
@@ -238,72 +360,40 @@ accumulates rather than tuning once and trusting it forever. Runs ~400+
 backtests per invocation, so expect it to take a few minutes; `--top` and
 `--min-trades` control how much is printed, not how long it takes.
 
-## Dashboard
-
-A web dashboard reads directly from `data/trades.db` and the
-`reports_out`/`backtests_out` JSON files - it doesn't compute anything new,
-it just presents what the rest of this repo already produces, and lets you
-approve/reject pending trade proposals without touching the terminal. It's
-styled as "Kora Terminal" - a dark sidebar+topbar shell (see
-`docs/kora_roadmap.md` for the full design direction and what's still
-aspirational versus built).
+## Kora Terminal (the hub)
 
 ```bash
 python scripts/run_dashboard.py            # http://127.0.0.1:5000
-python scripts/run_dashboard.py --port 8080
 ```
 
-It binds to `127.0.0.1` by default - reachable only from the machine it's
-running on. Pages:
-- **Overview** - total P&L, win rate, profit factor, max drawdown, an
-  equity curve, expectancy in R (once trades are tagged - see below), your
-  top mistake categories, and a live daily-loss-limit progress bar
-  (color-coded green/orange/red the same way prop-firm dashboards do,
-  warning before you breach `config/rules.yaml`'s `max_daily_loss_pct`,
-  not after).
-- **Charts** - a candlestick chart (any configured MT4/5 instrument,
-  selectable timeframe) with your trade entries/exits marked on it,
-  via a small `/api/candles/<symbol>` JSON endpoint and
-  [lightweight-charts](https://github.com/tradingview/lightweight-charts)
-  loaded from a CDN - needs normal internet access (for the CDN script)
-  in addition to `METAAPI_TOKEN`/`METAAPI_ACCOUNT_ID`.
-- **Scanner** - the last known signal state per watched instrument (setup /
-  no setup / error), as of the most recent `run_scan.py` run - not a live
-  call, see "Scanning multiple instruments" above.
-- **Positions** - live open positions on your MetaApi (MT4/5) account,
-  fetched directly from MetaApi (not cached in `data/trades.db`, since a
-  position isn't a closed "trade" yet). Needs `METAAPI_TOKEN` and
-  `METAAPI_ACCOUNT_ID` set; reports honestly if they're missing or the
-  API call fails rather than showing an empty table.
-- **Calendar** - a monthly P&L heatmap (green = profit, red = loss, shade
-  = magnitude), the same "how's this month going" view a trading journal
-  gives you.
-- **Trades** - the full trade history, filterable by source (Deriv / MT4-5).
-  Click into any trade to tag it with a **setup**, an **emotional state**,
-  a **planned risk amount**, and free-text **notes** - this is what feeds
-  R-multiple stats and the breakdowns below, and it's the one piece of
-  "learn from mistakes" that can't be inferred automatically: what you were
-  actually thinking.
-- **Mistakes** - rule violations from `config/rules.yaml`, by rule and by
-  trade. Now includes `daily_loss_limit_breached` and `oversize_risk` (the
-  latter only for trades you've tagged with a risk amount) - both were
-  stubbed out until real balance data existed to check them against.
-- **Insights** - R-multiple/expectancy stats, and performance broken down
-  by hour of day, day of week, tagged setup ("playbook"), and tagged
-  emotional state - the standard cuts for finding where an edge actually
-  lives versus where it's quietly leaking, per `docs/dashboard_feature_research.md`.
-- **Backtests** - every `run_backtest.py` result, with drill-down into the
-  individual simulated trades behind each summary.
-- **Proposals** - pending/executed/rejected trade proposals, with
-  **Approve**/**Reject** buttons on pending ones. Approving from the
-  dashboard is always demo-gated - going live stays a deliberate CLI action
-  (`decide_proposal.py --live`), not a button that's one click away in a
-  web UI.
+| Screen | What's on it |
+|---|---|
+| Dashboard | Equity, daily P/L (vs start-of-day equity), open P/L, free margin, max drawdown, win rate; equity curve; Kora status and top opportunity; live sessions; open positions; limits & quality |
+| Charts | Canvas candlesticks for every instrument and timeframe with VWAP, EMA 20, Kora's S/R levels, your positions' entry/SL/TP and **Kora's current plan** (entry/SL/TP1/TP2) overlaid; crosshair; live last candle; watchlist |
+| Kora Agent | Run/Pause/Stop, analyse-now, confidence gauge, regime, live signals, reasoning chain, instrument brief cards, expandable decision log |
+| Kora breakdown (`/kora/<CODE>`) | The full report for one instrument: verdict, Kora's take, every entry plan with levels / why / against / trigger / invalidation / track record, technical table, key levels, fundamentals and upcoming events, setup track record |
+| Positions | Live MT5 positions (read-only) with risk %, $ to stop/target, duration and how each sits against Kora's analysis; recently closed |
+| Risk | Composite risk gauge and account health; exposure by asset class; risk per position; historical VaR; bootstrapped expected drawdown; stress tests; correlation-adjusted heat; daily-loss and trailing-drawdown buffers; live correlation heatmap |
+| Analytics | Sharpe, Sortino, Calmar, PF, expectancy, risk of ruin (Monte Carlo), etc.; monthly returns; win/loss; P/L distribution (in R once trades carry a risk amount); strategy comparison by setup tag; hour/weekday breakdowns. Links to the P&L calendar, rule violations and backtests |
+| Journal | Card per closed trade with an auto-captured candle snapshot, tags, review status, **Kora's note** (was the entry aligned with Kora's analysis at the time?) and your lesson; click to tag and review |
+| Scanner | Every instrument ranked by Kora's opportunity score, with live price, change, ATR, volatility percentile, trend strength and Kora's read |
+| Economic Calendar | This week's (and next week's, once published) releases with impact filter and live countdowns |
+| AI Insights | Ask Kora (chat grounded in your live context) |
+| Settings | Data connections, masked API keys, Kora settings, notifications |
 
-Since it reads the same `data/trades.db` that `run_ingest.py` writes to,
-it updates automatically after each ingestion run - no separate sync step.
+Topbar search (press `/`) jumps to any instrument breakdown or page. The
+hub reads only from SQLite, so pages load instantly. Live values refresh
+every 2s from what the Kora service writes. If the service isn't running,
+every screen says so instead of showing stale or made-up numbers.
+**There are no order buttons anywhere.** The old proposal approve/execute
+flow has been removed from the web UI. (`decide_proposal.py` still exists
+as a deliberate, demo-gated CLI tool, but Kora itself never uses it.)
 
-### Automated scanning
+### Legacy: automated proposal scanning
+
+Superseded by Kora (`scripts/run_kora.py`), which analyses without filing
+executable proposals. Kept for reference:
+
 
 ```bash
 python scripts/run_scan_loop.py                       # scans every 20 minutes
@@ -336,8 +426,14 @@ cd ~/Trade-Analysis-Agent
 git pull origin main
 WINPATH=$(pwd -W)
 MSYS_NO_PATHCONV=1 schtasks /create /tn "TradeAgentDashboard" /tr "\"$WINPATH/run_dashboard.bat\"" /sc onlogon /rl highest /f
-MSYS_NO_PATHCONV=1 schtasks /create /tn "TradeAgentScanLoop" /tr "\"$WINPATH/run_scan_loop.bat\"" /sc onlogon /rl highest /f
+MSYS_NO_PATHCONV=1 schtasks /create /tn "KoraAgent" /tr "\"$WINPATH/run_kora.bat\"" /sc onlogon /rl highest /f
 ```
+
+`run_kora.bat` replaces the old scan loop: Kora does the scanning now, and
+it only analyses. If you registered `TradeAgentScanLoop` before, remove it
+so the old proposal scanner isn't running alongside Kora:
+`MSYS_NO_PATHCONV=1 schtasks /delete /tn "TradeAgentScanLoop" /f`.
+Kora logs to `kora.log`.
 
 `MSYS_NO_PATHCONV=1` is required here specifically because you're running
 `schtasks` (a native Windows tool) from Git Bash - its MSYS layer otherwise
@@ -347,14 +443,14 @@ the same prefix.
 
 This registers two scheduled tasks that start automatically the moment you
 log into Windows and keep running in the background (via `pythonw`, so no
-console window pops up) - `run_dashboard.bat` and `run_scan_loop.bat` (both
+console window pops up) - `run_dashboard.bat` and `run_kora.bat` (both
 at the project root) each `cd` to the project folder first, so they work
 regardless of what directory Task Scheduler launches them from.
 
 To check on them without ever opening a terminal: visit
 `http://127.0.0.1:5000` anytime, or check Task Manager for `pythonw.exe`
 processes. If you do want to look under the hood, output is redirected to
-`dashboard.log` and `scan_loop.log` in the project root (both gitignored)
+`dashboard.log` and `kora.log` in the project root (both gitignored)
 rather than a console, since `pythonw` has none.
 
 A few things worth knowing:
@@ -363,11 +459,11 @@ A few things worth knowing:
 - **To trigger a task immediately** instead of waiting for your next
   logon: `MSYS_NO_PATHCONV=1 schtasks /run /tn "TradeAgentDashboard"`.
 - **To stop everything**: `MSYS_NO_PATHCONV=1 schtasks /end /tn "TradeAgentDashboard"`
-  and the same for `TradeAgentScanLoop` (stops the running process; they'll
+  and the same for `KoraAgent` (stops the running process; they'll
   start again at your next logon unless you also disable them).
 - **To remove the scheduled tasks entirely**:
   `MSYS_NO_PATHCONV=1 schtasks /delete /tn "TradeAgentDashboard" /f` and the
-  same for `TradeAgentScanLoop`.
+  same for `KoraAgent`.
 - Since this is a Task Scheduler entry rather than a shell you launched
   yourself, it won't have your interactive shell's exported environment
   variables - `.env` is loaded explicitly by both entry-point scripts now,

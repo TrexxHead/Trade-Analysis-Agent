@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d0c">
+<title>Sign in · Kora Terminal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='kora.css') }}">
+<style>
+  body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px max(16px,env(safe-area-inset-left,0px))}
+  .card{width:100%;max-width:380px;text-align:center}
+  .card h1{font-family:var(--font-display);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:16px 0 4px;color:#fff}
+</style>
+</head>
+<body>
+  <form class="panel card" method="post" autocomplete="on">
+    <div style="width:56px;height:56px;border-radius:999px;background:var(--gradient-brand);margin:0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;color:var(--ink)">K</div>
+    <h1>Kora Terminal</h1>
+    <p class="note" style="margin:0 0 20px">Enter your dashboard password to continue.</p>
+    <input type="hidden" name="next" value="{{ next }}">
+    <input class="field" type="password" name="password" id="password" placeholder="Password" autofocus autocomplete="current-password" style="text-align:center;font-size:15px;padding:12px">
+    {% if error %}<div class="c-r" style="font-size:13px;margin-top:10px">{{ error }}</div>{% endif %}
+    <button class="btn-pri" type="submit" style="width:100%;margin-top:14px;padding:12px">Sign in</button>
+    <p class="note" style="margin:16px 0 0">You'll stay signed in on this device for 30 days.</p>
+  </form>
+</body>
+</html>

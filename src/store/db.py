@@ -274,3 +274,250 @@ def update_proposal_status(conn: sqlite3.Connection, proposal_id: int, status: s
         (status, datetime.now(timezone.utc).isoformat(), note, executed_order_id, proposal_id),
     )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Kora analyst tables. Kora only *analyses* - it never places orders - so
+# everything below is market state, analysis output, and service state.
+# ---------------------------------------------------------------------------
+
+KORA_SCHEMA = """
+CREATE TABLE IF NOT EXISTS kv (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS quotes (
+    code TEXT PRIMARY KEY,
+    bid REAL, ask REAL, price REAL,
+    day_open REAL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    cycle_id TEXT NOT NULL,
+    bias TEXT, confidence REAL, opportunity REAL,
+    report_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    code TEXT,
+    action TEXT NOT NULL,
+    tone TEXT NOT NULL,          -- g (setup) / a (watch) / r (skip) / b (system)
+    confidence REAL,
+    explanation TEXT NOT NULL,
+    analysis_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS setup_stats (
+    code TEXT NOT NULL,
+    setup TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    n INTEGER NOT NULL, wins INTEGER NOT NULL,
+    avg_r REAL NOT NULL, expectancy REAL NOT NULL,
+    timeframe TEXT, days INTEGER,
+    trained_at TEXT NOT NULL,
+    PRIMARY KEY (code, setup, direction)
+);
+
+CREATE TABLE IF NOT EXISTS trade_charts (
+    trade_id TEXT PRIMARY KEY,
+    timeframe TEXT NOT NULL,
+    candles_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS alerts_sent (
+    dedupe_key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analyses_code ON analyses(code, created_at);
+CREATE INDEX IF NOT EXISTS idx_decisions_created ON decisions(created_at);
+"""
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def kora_connection(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+    conn = get_connection(db_path)
+    conn.executescript(KORA_SCHEMA)
+    return conn
+
+
+def kv_get(conn, key: str, default=None):
+    row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+    return json.loads(row["value"]) if row else default
+
+
+def kv_get_with_time(conn, key: str):
+    row = conn.execute("SELECT value, updated_at FROM kv WHERE key = ?", (key,)).fetchone()
+    return (json.loads(row["value"]), row["updated_at"]) if row else (None, None)
+
+
+def kv_set(conn, key: str, value) -> None:
+    conn.execute(
+        "INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        (key, json.dumps(value, default=str), _now()),
+    )
+    conn.commit()
+
+
+def upsert_quotes(conn, quotes: dict[str, dict]) -> None:
+    now = _now()
+    conn.executemany(
+        "INSERT INTO quotes (code, bid, ask, price, day_open, updated_at) VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(code) DO UPDATE SET bid=excluded.bid, ask=excluded.ask, price=excluded.price, "
+        "day_open=COALESCE(excluded.day_open, quotes.day_open), updated_at=excluded.updated_at",
+        [(c, q.get("bid"), q.get("ask"), q.get("price"), q.get("day_open"), now) for c, q in quotes.items()],
+    )
+    conn.commit()
+
+
+def get_quotes(conn) -> dict[str, dict]:
+    return {r["code"]: dict(r) for r in conn.execute("SELECT * FROM quotes")}
+
+
+def save_analysis(conn, code: str, cycle_id: str, report: dict) -> int:
+    cur = conn.execute(
+        "INSERT INTO analyses (code, created_at, cycle_id, bias, confidence, opportunity, report_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (code, _now(), cycle_id, report.get("bias"), report.get("confidence"), report.get("opportunity"),
+         json.dumps(report, default=str)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def latest_analyses(conn) -> dict[str, dict]:
+    rows = conn.execute(
+        "SELECT a.* FROM analyses a JOIN (SELECT code, MAX(id) AS mid FROM analyses GROUP BY code) m "
+        "ON a.id = m.mid"
+    )
+    out = {}
+    for r in rows:
+        rep = json.loads(r["report_json"])
+        rep["_id"], rep["_created_at"] = r["id"], r["created_at"]
+        out[r["code"]] = rep
+    return out
+
+
+def analyses_between(conn, code: str, start: str, end: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, created_at, report_json FROM analyses WHERE code = ? AND created_at BETWEEN ? AND ? "
+        "ORDER BY id DESC", (code, start, end))
+    return [{"_id": r["id"], "_created_at": r["created_at"], **json.loads(r["report_json"])} for r in rows]
+
+
+def prune_analyses(conn, keep_days: int = 30) -> None:
+    conn.execute("DELETE FROM analyses WHERE created_at < datetime('now', ?)", (f"-{keep_days} days",))
+    conn.commit()
+
+
+def add_decision(conn, action: str, tone: str, explanation: str, code: str | None = None,
+                 confidence: float | None = None, analysis_id: int | None = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO decisions (created_at, code, action, tone, confidence, explanation, analysis_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)", (_now(), code, action, tone, confidence, explanation, analysis_id))
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_decisions(conn, limit: int = 50, since: str | None = None) -> list[dict]:
+    if since:
+        rows = conn.execute("SELECT * FROM decisions WHERE created_at >= ? ORDER BY id DESC LIMIT ?", (since, limit))
+    else:
+        rows = conn.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", (limit,))
+    return [dict(r) for r in rows]
+
+
+def save_setup_stats(conn, code: str, rows: list[dict], timeframe: str, days: int) -> None:
+    conn.execute("DELETE FROM setup_stats WHERE code = ?", (code,))
+    conn.executemany(
+        "INSERT INTO setup_stats (code, setup, direction, n, wins, avg_r, expectancy, timeframe, days, trained_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(code, r["setup"], r["direction"], r["n"], r["wins"], r["avg_r"], r["expectancy"], timeframe, days, _now())
+         for r in rows])
+    conn.commit()
+
+
+def get_setup_stats(conn, code: str | None = None) -> dict:
+    q, p = "SELECT * FROM setup_stats", ()
+    if code:
+        q, p = q + " WHERE code = ?", (code,)
+    return {(r["code"], r["setup"], r["direction"]): dict(r) for r in conn.execute(q, p)}
+
+
+def save_trade_chart(conn, trade_id: str, timeframe: str, candles: list[dict]) -> None:
+    conn.execute("INSERT OR REPLACE INTO trade_charts (trade_id, timeframe, candles_json) VALUES (?, ?, ?)",
+                 (trade_id, timeframe, json.dumps(candles)))
+    conn.commit()
+
+
+def get_trade_charts(conn) -> dict[str, dict]:
+    return {r["trade_id"]: {"timeframe": r["timeframe"], "candles": json.loads(r["candles_json"])}
+            for r in conn.execute("SELECT * FROM trade_charts")}
+
+
+def alert_already_sent(conn, key: str, within_hours: float) -> bool:
+    row = conn.execute("SELECT sent_at FROM alerts_sent WHERE dedupe_key = ?", (key,)).fetchone()
+    if not row:
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(row["sent_at"])
+    return age.total_seconds() < within_hours * 3600
+
+
+def mark_alert_sent(conn, key: str) -> None:
+    conn.execute("INSERT OR REPLACE INTO alerts_sent (dedupe_key, sent_at) VALUES (?, ?)", (key, _now()))
+    conn.commit()
+
+
+PLANS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS kora_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dedupe_key TEXT UNIQUE NOT NULL,
+    code TEXT NOT NULL, setup TEXT NOT NULL, setup_name TEXT, direction TEXT NOT NULL,
+    grade TEXT, confidence REAL, entry_type TEXT, entry REAL, stop REAL, tp1 REAL, tp2 REAL, rr1 REAL,
+    digits INTEGER, created_at TEXT NOT NULL, analysis_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'open', resolved_at TEXT, result_r REAL
+);
+CREATE INDEX IF NOT EXISTS idx_plans_status ON kora_plans(status);
+"""
+
+
+def record_plan(conn, key: str, code: str, cand: dict, digits: int, analysis_id: int | None) -> bool:
+    conn.executescript(PLANS_SCHEMA)
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO kora_plans (dedupe_key, code, setup, setup_name, direction, grade, confidence, entry_type, "
+        "entry, stop, tp1, tp2, rr1, digits, created_at, analysis_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (key, code, cand["setup"], cand["setup_name"], cand["direction"], cand["grade"], cand["confidence"],
+         cand["entry_type"], cand["entry"], cand["stop"], cand["tp1"], cand["tp2"], cand["rr1"], digits, _now(), analysis_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def open_plans(conn) -> list[dict]:
+    conn.executescript(PLANS_SCHEMA)
+    return [dict(r) for r in conn.execute("SELECT * FROM kora_plans WHERE status = 'open'")]
+
+
+def resolve_plan_row(conn, plan_id: int, status: str, result_r: float | None) -> None:
+    conn.execute("UPDATE kora_plans SET status = ?, result_r = ?, resolved_at = ? WHERE id = ?",
+                 (status, result_r, _now(), plan_id))
+    conn.commit()
+
+
+def list_plans(conn, code: str | None = None, limit: int = 200) -> list[dict]:
+    conn.executescript(PLANS_SCHEMA)
+    q, p = "SELECT * FROM kora_plans", []
+    if code:
+        q, p = q + " WHERE code = ?", [code]
+    return [dict(r) for r in conn.execute(q + " ORDER BY id DESC LIMIT ?", (*p, limit))]

@@ -10,7 +10,11 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 
-from metaapi_cloud_sdk import MetaApi
+
+
+def MetaApi(token):  # noqa: N802 - lazy, so MT5/Deriv users don't need the optional MetaApi SDK installed
+    from metaapi_cloud_sdk import MetaApi as _MetaApi
+    return _MetaApi(token)
 
 OPEN_ENTRY_TYPES = {"DEAL_ENTRY_IN"}
 CLOSE_ENTRY_TYPES = {"DEAL_ENTRY_OUT", "DEAL_ENTRY_OUT_BY"}
@@ -118,7 +122,8 @@ async def _fetch_candles_async(symbol: str, timeframe: str, count: int) -> list[
     # guarantee return order.
     candles = await account.get_historical_candles(symbol, mt_timeframe, limit=count)
     result = [
-        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"]),
+         "volume": c.get("tickVolume")}
         for c in candles
     ]
     result.sort(key=lambda c: c["time"])
@@ -163,7 +168,8 @@ async def _fetch_candle_history_async(symbol: str, timeframe: str, days: int) ->
 
     kept = [c for t, c in by_time.items() if t >= cutoff]
     result = [
-        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"])}
+        {"open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"], "time": _iso(c["time"]),
+         "volume": c.get("tickVolume")}
         for c in kept
     ]
     result.sort(key=lambda c: c["time"])

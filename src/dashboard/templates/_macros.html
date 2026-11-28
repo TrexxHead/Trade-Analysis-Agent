@@ -1,0 +1,47 @@
+{% macro spark(values, D) -%}
+{% if values and values|length > 1 %}{% set up = values[-1] >= values[0] %}
+<svg class="spark-svg" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"><path d="{{ D.spark_path(values) }}" fill="none" stroke="{{ '#9bd35a' if up else '#ff6b61' }}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>
+{% else %}<svg class="spark-svg" viewBox="0 0 120 28"></svg>{% endif %}
+{%- endmacro %}
+
+{% macro track_record(plans, pstats, D, show_code=True, title='Forward track record') -%}
+<div class="panel flush">
+  <div style="padding:18px 22px 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <h3 class="h3 lg">{{ title }}</h3>
+    <span class="note">Every A/B plan Kora issues, resolved against real candles afterwards</span>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:10px 22px 14px">
+    <div class="tile"><div class="v">{{ pstats.resolved }}</div><div class="l">Resolved plans</div></div>
+    <div class="tile"><div class="v">{{ '%.0f%%'|format(pstats.win_rate) if pstats.win_rate is not none else '—' }}</div><div class="l">Hit rate</div></div>
+    <div class="tile"><div class="v c-{{ D.tone(pstats.avg_r) if pstats.avg_r is not none else 'w' }}">{{ '%+.2fR'|format(pstats.avg_r) if pstats.avg_r is not none else '—' }}</div><div class="l">Avg per plan</div></div>
+    <div class="tile"><div class="v c-{{ D.tone(pstats.total_r) }}">{{ '%+.1fR'|format(pstats.total_r) }}</div><div class="l">Total</div></div>
+    <div class="tile"><div class="v">{{ pstats.open }}</div><div class="l">Live now</div></div>
+    <div class="tile"><div class="v">{{ pstats.not_filled }}</div><div class="l">Never filled</div></div>
+  </div>
+  {% if plans %}
+  <div style="overflow-x:auto">
+  <table class="tbl">
+    <thead><tr><th>Issued</th>{% if show_code %}<th>Instrument</th>{% endif %}<th>Plan</th><th>Grade</th><th>Entry</th><th>Stop</th><th>TP1</th><th style="text-align:right">Result</th></tr></thead>
+    <tbody>
+    {% for p in plans %}
+    <tr>
+      <td class="faint" data-localtime="{{ p.created_at }}" data-fmt="datetime"></td>
+      {% if show_code %}<td><a href="/kora/{{ p.code }}" style="color:#fff;font-weight:600">{{ p.code }}</a></td>{% endif %}
+      <td><span class="dir {{ p.direction }}">{{ p.direction|upper }}</span> <span class="muted">{{ p.setup_name }}</span></td>
+      <td><span class="grade {{ p.grade }}">{{ p.grade }}</span> <span class="faint">{{ '%.0f'|format(p.confidence) }}%</span></td>
+      <td class="mono">{{ D.price(p.entry, p.digits) }}</td><td class="mono c-r">{{ D.price(p.stop, p.digits) }}</td><td class="mono c-g">{{ D.price(p.tp1, p.digits) }}</td>
+      <td style="text-align:right">
+        {% if p.status == 'open' %}<span class="tint b">Live</span>
+        {% elif p.status == 'won' %}<span class="tint g">Won {{ '%+.2fR'|format(p.result_r) }}</span>
+        {% elif p.status == 'lost' %}<span class="tint r">Lost −1R</span>
+        {% elif p.status == 'expired' %}<span class="tint {{ 'g' if p.result_r and p.result_r > 0 else 'm' }}">Expired {{ '%+.2fR'|format(p.result_r) }}</span>
+        {% else %}<span class="tint m">Not filled</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<div class="empty" style="padding-top:6px">No plans logged yet. When Kora issues a plan graded A or B, it appears here and is scored automatically as price plays out.</div>{% endif %}
+</div>
+{%- endmacro %}

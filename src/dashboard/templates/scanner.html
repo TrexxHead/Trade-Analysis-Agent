@@ -1,37 +1,80 @@
 {% extends "base.html" %}
-{% block title %}Scanner - Trade Analysis Agent{% endblock %}
+{% from "_macros.html" import spark %}
 {% block content %}
-<h1>Scanner</h1>
-<p style="color:var(--text-secondary); font-size:13px; margin:-12px 0 16px;">
-  Last known signal state per watched instrument, as of the most recent
-  <code>scripts/run_scan.py</code> run. Run <code>scripts/run_scan_loop.py</code>
-  continuously to keep this current.
-</p>
-
-<div class="card">
-<table>
-  <thead><tr><th>Symbol</th><th>Timeframe</th><th>Checked</th><th>Status</th><th>Details</th></tr></thead>
-  <tbody>
-    {% for r in results %}
-    <tr>
-      <td>{{ r.symbol }}</td>
-      <td>{{ r.timeframe or '—' }}</td>
-      <td>{{ r.checked_at[:16].replace('T',' ') if r.checked_at else 'never' }}</td>
-      <td>
-        {% if not r.checked_at %}<span class="pill muted">not scanned yet</span>
-        {% elif r.error %}<span class="pill critical">error</span>
-        {% elif r.direction %}<span class="pill good">{{ r.direction }} setup</span>
-        {% else %}<span class="pill muted">no setup</span>{% endif %}
-      </td>
-      <td style="max-width:420px; font-size:12px; color:var(--text-secondary);">
-        {% if not r.checked_at %}Run <code>scripts/run_scan.py</code> to check this instrument.
-        {% elif r.error %}{{ r.error }}
-        {% elif r.rationale %}{{ r.rationale }}
-        {% else %}No trend-pullback conditions met at last check.{% endif %}
-      </td>
-    </tr>
+{% set cols = "34px 96px minmax(110px,1fr) 104px 78px 88px 64px 64px 90px minmax(150px,1.3fr) 70px" %}
+<div class="screen" style="gap:14px">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" id="filters">
+    <div class="seg">
+      <button class="fchip on" data-scope="watch">Watchlist</button>
+      <button class="fchip" data-scope="all">All instruments</button>
+    </div>
+    <select class="field" id="f-kind" style="width:auto;padding:6px 10px;font-size:13px"><option value="">All classes</option><option>Metals</option><option>Synthetics</option><option>Forex</option><option>Custom</option></select>
+    <select class="field" id="f-bias" style="width:auto;padding:6px 10px;font-size:13px"><option value="">Any bias</option><option>Bullish</option><option>Bearish</option><option>Neutral</option></select>
+    <button class="fchip" id="f-setup">Has a setup</button>
+    <span class="note" style="margin-left:auto">Click a column to sort · ★ adds to your watchlist · click a row for Kora's breakdown</span>
+  </div>
+  <div class="panel flush" style="overflow-x:auto">
+    <div style="min-width:1080px">
+    <div class="hrow" style="grid-template-columns:{{ cols }};gap:10px" id="head">
+      <span></span><span data-sort="code" style="cursor:pointer">Symbol</span><span>Last 48h</span><span data-sort="chg" style="cursor:pointer">Price · change</span>
+      <span data-sort="bias" style="cursor:pointer">Bias</span><span data-sort="vol" style="cursor:pointer" title="ATR percentile vs last 100 H1 bars">Volatility</span>
+      <span data-sort="rsi" style="cursor:pointer">RSI H1</span><span data-sort="adx" style="cursor:pointer">ADX H1</span>
+      <span data-sort="lvl" style="cursor:pointer" title="Distance to the nearest key level in ATR, and the live spread in points">Level · spread</span>
+      <span>Kora read</span><span data-sort="score" style="cursor:pointer;text-align:right">Score ↓</span>
+    </div>
+    <div id="rows">
+    {% for r in rows %}{% set rep = r.rep %}{% set h1 = rep.reads.H1 if rep and rep.reads.H1 else {} %}
+    {% set near = (rep.key_levels|sort(attribute='distance_atr')|map(attribute='distance_atr')|map('abs')|min) if rep and rep.key_levels else none %}
+    <div class="drow scan-row" style="grid-template-columns:{{ cols }};gap:10px" data-href="/kora/{{ r.code }}"
+         data-code="{{ r.code }}" data-kind="{{ r.kind }}" data-watched="{{ 1 if r.watched else 0 }}" data-bias="{{ rep.bias if rep else '' }}" data-setup="{{ 1 if r.best else 0 }}"
+         data-chg="{{ r.chg if r.chg is not none else -999 }}" data-vol="{{ r.vol if r.vol is not none else -1 }}" data-rsi="{{ h1.rsi if h1.rsi is not none else -1 }}" data-adx="{{ h1.adx if h1.adx is not none else -1 }}"
+         data-lvl="{{ near if near is not none else 999 }}" data-score="{{ r.score if r.score is not none else -1 }}">
+      <button class="star" data-star="{{ r.code }}" aria-label="Watch {{ r.code }}" style="background:none;border:none;cursor:pointer;font-size:16px;color:{{ '#ffc34d' if r.watched else 'rgba(235,235,245,.25)' }}">★</button>
+      <span><span style="font-weight:600;color:#fff;display:block">{{ r.code }}</span><span class="faint" style="font-size:11.5px">{{ r.name }}</span></span>
+      <span>{{ spark(sparks.get(r.code), D) }}</span>
+      <span><span class="mono" style="display:block" data-live="q:{{ r.code }}:price">{{ r.price_s }}</span><span class="mono c-{{ r.chg_t }}" style="font-size:12px" data-live="q:{{ r.code }}:chg">{{ r.chg_s }}</span></span>
+      <span>{% if rep %}<span class="tint {{ 'g' if rep.bias == 'Bullish' else 'r' if rep.bias == 'Bearish' else 'm' }}">{{ rep.bias }}</span>{% else %}<span class="faint">—</span>{% endif %}</span>
+      <span style="display:flex;align-items:center;gap:6px"><span class="bar t5" style="flex:1"><i class="bg-a" style="width:{{ r.vol or 0 }}%"></i></span></span>
+      <span class="mono {{ 'c-a' if h1.rsi and (h1.rsi > 70 or h1.rsi < 30) }}">{{ h1.rsi if h1.rsi is not none else '—' }}</span>
+      <span class="mono {{ 'c-b' if h1.adx and h1.adx >= 25 }}">{{ h1.adx if h1.adx is not none else '—' }}</span>
+      <span class="mono" title="Live spread: {{ r.spread_pts ~ ' points' if r.spread_pts is not none else 'n/a' }}">{{ '%.2f'|format(near) if near is not none else '—' }}{% if r.spread_pts is not none %} <span class="faint" style="font-size:11px">· {{ r.spread_pts }}pt</span>{% endif %}{% if rep and rep.fundamentals.event_risk %} <span class="tint r" title="{{ rep.fundamentals.event_risk.text }}">news</span>{% endif %}</span>
+      <span style="font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% if r.best %}<span class="grade {{ r.best.grade }}">{{ r.best.grade }}</span> <span class="dir {{ r.best.direction }}">{{ r.best.direction|upper }}</span> {{ r.best.setup_name }}{% elif rep %}{{ rep.headline or rep.regime.primary }}{% else %}Not analysed — add to watchlist{% endif %}</span>
+      {% set s = r.score %}
+      <span class="mono" style="font-weight:600;font-size:13px;border-radius:8px;padding:4px 0;text-align:center;{% if s is none %}color:var(--faint);background:rgba(255,255,255,.04){% elif s >= 70 %}color:var(--g);background:rgba(155,211,90,.15){% elif s >= 55 %}color:var(--a);background:rgba(255,195,77,.13){% else %}color:var(--muted);background:rgba(255,255,255,.07){% endif %}">{{ s if s is not none else '—' }}</span>
+    </div>
     {% endfor %}
-  </tbody>
-</table>
+    </div>
+    <div id="none" class="empty" style="display:none">Nothing matches these filters.</div>
+    </div>
+  </div>
+  <div class="note">Score is the best entry plan's calibrated confidence. With no plan, it's 45% of the bias conviction, so trending-but-unready markets still rank above flat ones. Kora only analyses instruments on your watchlist.</div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA, rows = K.$$('.scan-row');
+  let scope = 'watch', sortKey = 'score', dir = -1, onlySetup = false;
+  function apply() {
+    const kind = K.$('#f-kind').value, bias = K.$('#f-bias').value; let shown = 0;
+    const sorted = rows.slice().sort((a, b) => { const va = a.dataset[sortKey], vb = b.dataset[sortKey]; const na = parseFloat(va), nb = parseFloat(vb);
+      return (isNaN(na) || isNaN(nb) ? va.localeCompare(vb) : na - nb) * dir; });
+    sorted.forEach((r) => { const ok = (scope === 'all' || r.dataset.watched === '1') && (!kind || r.dataset.kind === kind) && (!bias || r.dataset.bias === bias) && (!onlySetup || r.dataset.setup === '1');
+      r.style.display = ok ? '' : 'none'; if (ok) shown++; K.$('#rows').appendChild(r); });
+    K.$('#none').style.display = shown ? 'none' : 'block';
+    K.$$('#head [data-sort]').forEach((h) => { h.textContent = h.textContent.replace(/ [↑↓]$/, '') + (h.dataset.sort === sortKey ? (dir < 0 ? ' ↓' : ' ↑') : ''); });
+  }
+  K.$$('[data-scope]').forEach((b) => b.onclick = () => { scope = b.dataset.scope; K.$$('[data-scope]').forEach((x) => x.classList.toggle('on', x === b)); apply(); });
+  K.$('#f-kind').onchange = apply; K.$('#f-bias').onchange = apply;
+  K.$('#f-setup').onclick = (e) => { onlySetup = !onlySetup; e.target.classList.toggle('on', onlySetup); apply(); };
+  K.$$('#head [data-sort]').forEach((h) => h.onclick = () => { if (sortKey === h.dataset.sort) dir = -dir; else { sortKey = h.dataset.sort; dir = h.dataset.sort === 'code' || h.dataset.sort === 'lvl' ? 1 : -1; } apply(); });
+  rows.forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('[data-star]')) location.href = r.dataset.href; }));
+  K.$$('[data-star]').forEach((b) => b.onclick = async (e) => { e.stopPropagation();
+    const row = b.closest('.scan-row'), on = row.dataset.watched !== '1';
+    await K.post('/api/watchlist', { action: on ? 'add' : 'remove', code: b.dataset.star });
+    row.dataset.watched = on ? '1' : '0'; b.style.color = on ? '#ffc34d' : 'rgba(235,235,245,.25)';
+    K.toast(on ? `Watching ${b.dataset.star} — Kora analyses it next cycle` : `Removed ${b.dataset.star} from your watchlist`); apply(); });
+  apply();
+})();
+</script>
 {% endblock %}

@@ -1,39 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Trade {{ trade.id }} - Trade Analysis Agent{% endblock %}
+{% block page_title %}{{ trade.symbol }} {{ trade.direction|upper }} · {{ D.smoney(trade.pnl) }}{% endblock %}
+{% block page_sub %}Trade review · closed {{ trade.close_time[:16].replace('T', ' ') }} UTC{% endblock %}
 {% block content %}
-<h1>Trade {{ trade.id }}</h1>
-<a href="/trades" class="pill muted">&larr; all trades</a>
-
-<div class="stat-grid" style="margin-top:16px;">
-  <div class="stat-tile"><div class="label">Symbol</div><div class="value">{{ trade.symbol }}</div></div>
-  <div class="stat-tile"><div class="label">Direction</div><div class="value">{{ trade.direction }}</div></div>
-  <div class="stat-tile"><div class="label">P&amp;L</div><div class="value {{ 'pos' if trade.pnl >= 0 else 'neg' }}">{{ '%+.2f' % trade.pnl }}</div></div>
-  <div class="stat-tile"><div class="label">Closed</div><div class="value" style="font-size:14px;">{{ trade.close_time[:16].replace('T',' ') }}</div></div>
-</div>
-
-<h2>Your notes</h2>
-<div class="card">
-<form method="post">
-  <label for="setup">Setup / strategy tag</label>
-  <input type="text" id="setup" name="setup" value="{{ trade.setup or '' }}" placeholder="e.g. pullback, breakout, confluence-reversal">
-
-  <label for="emotion">Emotional state</label>
-  <select id="emotion" name="emotion">
-    <option value="" {{ 'selected' if not trade.emotion }}>—</option>
-    {% for e in ['calm', 'confident', 'anxious', 'impulsive', 'fearful', 'frustrated', 'fomo'] %}
-    <option value="{{ e }}" {{ 'selected' if trade.emotion == e }}>{{ e }}</option>
-    {% endfor %}
-  </select>
-
-  <label for="risk_amount">Planned risk amount ($) - enables R-multiple stats for this trade</label>
-  <input type="number" step="any" id="risk_amount" name="risk_amount" value="{{ trade.risk_amount or '' }}" placeholder="e.g. 100">
-
-  <label for="notes">Notes</label>
-  <textarea id="notes" name="notes" placeholder="Why did you take this? What did you see? What would you do differently?">{{ trade.notes or '' }}</textarea>
-
-  <div style="margin-top:16px;">
-    <button type="submit" class="pill good" style="border:none; cursor:pointer; font:inherit;">Save</button>
+<div class="screen">
+  <div><a href="/journal" class="obtn"><i data-lucide="arrow-left"></i>Journal</a></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px">
+    <div class="stat"><div class="lbl-up">Symbol</div><div class="v" style="font-size:17px">{{ trade.symbol }}</div><div class="s">{{ trade.source }}</div></div>
+    <div class="stat"><div class="lbl-up">Side · volume</div><div class="v" style="font-size:17px"><span class="dir {{ trade.direction }}">{{ trade.direction|upper }}</span> {{ trade.volume }}</div></div>
+    <div class="stat"><div class="lbl-up">Entry → exit</div><div class="v" style="font-size:15px">{{ '%.5g'|format(trade.open_price) if trade.open_price is not none else '—' }} → {{ '%.5g'|format(trade.close_price) if trade.close_price is not none else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">P&amp;L</div><div class="v c-{{ D.tone(trade.pnl) }}">{{ D.smoney(trade.pnl) }}</div><div class="s">{% if trade.risk_amount %}{{ '%+.2fR'|format(trade.pnl / trade.risk_amount) }}{% else %}tag a risk amount for R{% endif %}</div></div>
   </div>
-</form>
+  {% if chart %}<div class="panel sunk"><div class="ph"><h3 class="h3">Price action around the trade</h3><span class="r">H1 · shaded = time in trade</span></div>
+    {% set oi = namespace(o=-1, c=-1) %}
+    {% for k in chart.candles %}{% if oi.o < 0 and k.time >= trade.open_time[:19] %}{% set oi.o = loop.index0 %}{% endif %}{% if k.time[:13] <= trade.close_time[:13] %}{% set oi.c = loop.index0 %}{% endif %}{% endfor %}
+    <svg data-candles='{{ chart.candles|tojson }}' data-open-idx="{{ oi.o }}" data-close-idx="{{ oi.c }}" style="width:100%;height:200px;display:block"></svg></div>{% endif %}
+  {% if flags %}<div class="warn"><i data-lucide="alert-octagon"></i><span>Rule violations: {% for f in flags %}<b>{{ f.rule_id }}</b> — {{ f.detail }}{{ '; ' if not loop.last }}{% endfor %}</span></div>{% endif %}
+  <div class="panel" style="max-width:720px">
+    <h3 class="h3 lg">Your review</h3>
+    <form method="post">
+      <label class="fl" for="setup">Setup / strategy tag</label>
+      <input class="field" type="text" id="setup" name="setup" list="setup-tags" value="{{ trade.setup or '' }}" placeholder="Pick one of your strategies or Kora's setups">
+      <datalist id="setup-tags">{% for s in my_strategies %}<option value="{{ s.name }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
+      <label class="fl" for="emotion">Emotional state</label>
+      <select class="field" id="emotion" name="emotion">
+        <option value="" {{ 'selected' if not trade.emotion }}>—</option>
+        {% for e in ['calm', 'confident', 'anxious', 'impulsive', 'fearful', 'frustrated', 'fomo', 'tilted'] %}<option value="{{ e }}" {{ 'selected' if trade.emotion == e }}>{{ e }}</option>{% endfor %}
+      </select>
+      <label class="fl" for="risk_amount">Planned risk amount ($) — enables R-multiple stats</label>
+      <input class="field" type="number" step="any" id="risk_amount" name="risk_amount" value="{{ trade.risk_amount or '' }}" placeholder="e.g. 100">
+      <label class="fl" for="notes">Notes &amp; lesson</label>
+      <textarea class="field" id="notes" name="notes" placeholder="Why did you take it? What did you see? What would you do differently?">{{ trade.notes or '' }}</textarea>
+      <div style="margin-top:16px"><button type="submit" class="btn-pri">Save review</button></div>
+    </form>
+  </div>
 </div>
 {% endblock %}

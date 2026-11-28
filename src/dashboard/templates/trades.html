@@ -1,43 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Trades - Trade Analysis Agent{% endblock %}
 {% block content %}
-<h1>Trades</h1>
-
-<div style="margin-bottom:16px; display:flex; gap:6px;">
-  <a href="/trades" class="pill {{ 'muted' if source else 'good' }}">All</a>
-  <a href="/trades?source=deriv" class="pill {{ 'good' if source == 'deriv' else 'muted' }}">Deriv</a>
-  <a href="/trades?source=mt4_mt5" class="pill {{ 'good' if source == 'mt4_mt5' else 'muted' }}">MT4/5</a>
-</div>
-
-<div class="card">
-{% if trades %}
-<table>
-  <thead>
-    <tr>
-      <th>Closed</th><th>Source</th><th>Symbol</th><th>Dir</th>
-      <th>Volume</th><th>Open</th><th>Close</th><th>P&amp;L</th><th>Setup</th><th>Emotion</th><th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in trades %}
-    <tr>
-      <td>{{ t.close_time[:16].replace('T',' ') }}</td>
-      <td>{{ t.source }}</td>
-      <td>{{ t.symbol }}</td>
-      <td>{{ t.direction }}</td>
-      <td>{{ t.volume }}</td>
-      <td>{{ '%.5g' % t.open_price if t.open_price is not none else '—' }}</td>
-      <td>{{ '%.5g' % t.close_price if t.close_price is not none else '—' }}</td>
-      <td class="{{ 'pos' if t.pnl >= 0 else 'neg' }}">{{ '%+.2f' % t.pnl }}</td>
-      <td>{{ t.setup or '—' }}</td>
-      <td>{{ t.emotion or '—' }}</td>
-      <td><a href="/trades/{{ t.id }}" class="pill muted">{{ 'edit' if t.setup or t.notes or t.emotion or t.risk_amount else '+ tag' }}</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty">No trades match this filter.</div>
-{% endif %}
+<div class="screen" style="gap:14px">
+  <div style="display:flex;gap:7px;align-items:center">
+    {% for k, l in [(None,'All'),('mt4_mt5','MT5'),('deriv','Deriv')] %}<a href="/trades{{ '?source=' ~ k if k }}" class="fchip {{ 'on' if source == k }}">{{ l }}</a>{% endfor %}
+    <a href="/journal" class="obtn" style="margin-left:auto">Journal view</a>
+  </div>
+  <div class="panel flush" style="overflow-x:auto">
+    {% if trades %}
+    <table class="tbl">
+      <thead><tr><th>Closed</th><th>Source</th><th>Symbol</th><th>Side</th><th>Volume</th><th>Open</th><th>Close</th><th style="text-align:right">P&amp;L</th><th>Setup</th><th>Emotion</th><th></th></tr></thead>
+      <tbody>
+      {% for t in trades %}
+      <tr>
+        <td class="mono faint">{{ t.close_time[:16].replace('T',' ') }}</td><td class="muted">{{ t.source }}</td>
+        <td class="mono c-w">{{ t.symbol }}</td><td><span class="dir {{ t.direction }}">{{ t.direction|upper }}</span></td>
+        <td class="mono">{{ t.volume }}</td><td class="mono">{{ '%.5g'|format(t.open_price) if t.open_price is not none else '—' }}</td>
+        <td class="mono">{{ '%.5g'|format(t.close_price) if t.close_price is not none else '—' }}</td>
+        <td class="mono c-{{ D.tone(t.pnl) }}" style="text-align:right;font-weight:600">{{ D.smoney(t.pnl) }}</td>
+        <td>{{ t.setup or '—' }}</td><td>{{ t.emotion or '—' }}</td>
+        <td><a href="/trades/{{ t.id }}" class="obtn" style="padding:4px 11px">{{ 'Edit' if t.setup or t.notes or t.emotion or t.risk_amount else '+ Tag' }}</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No trades match this filter.</div>{% endif %}
+  </div>
 </div>
 {% endblock %}

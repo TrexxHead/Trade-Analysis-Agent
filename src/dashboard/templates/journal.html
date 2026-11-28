@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen" style="gap:14px">
+  <form method="get" id="jf" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="f" value="{{ f }}">
+    {% for k, l in [('all','All'),('wins','Wins'),('losses','Losses'),('flagged','Flagged'),('unreviewed','Needs review')] %}
+    <button type="submit" value="{{ k }}" onclick="this.form.elements.f.value=this.value" class="fchip {{ 'on' if f == k }}">{{ l }}</button>
+    {% endfor %}
+    <select class="field" name="sym" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()"><option value="">All symbols</option>{% for s in symbols %}<option {{ 'selected' if args.sym == s }}>{{ s }}</option>{% endfor %}</select>
+    <select class="field" name="setup" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()"><option value="">All setups</option>{% for s in setups %}<option {{ 'selected' if args.setup == s }}>{{ s }}</option>{% endfor %}</select>
+    <select class="field" name="align" style="width:auto;padding:6px 10px;font-size:13px" onchange="this.form.submit()">
+      <option value="">Any Kora alignment</option>{% for k, l in [('aligned','Aligned with Kora'),('against','Against Kora'),('discretionary','Discretionary')] %}<option value="{{ k }}" {{ 'selected' if args.align == k }}>{{ l }}</option>{% endfor %}</select>
+    <input class="field" type="date" name="start" value="{{ args.start }}" style="width:auto;padding:5px 10px;font-size:13px" onchange="this.form.submit()" aria-label="From">
+    <input class="field" type="date" name="end" value="{{ args.end }}" style="width:auto;padding:5px 10px;font-size:13px" onchange="this.form.submit()" aria-label="To">
+    <input class="field" name="q" value="{{ args.q }}" placeholder="Search notes…" style="width:170px;padding:6px 10px;font-size:13px">
+    <a href="/journal" class="note" style="color:var(--b)">Reset</a>
+    <a href="/pnl-calendar" class="obtn" style="margin-left:auto"><i data-lucide="calendar-days"></i>P&amp;L calendar</a>
+  </form>
+  {% if summary %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    <div class="stat"><div class="lbl-up">Trades</div><div class="v" style="font-size:21px">{{ n_match }}</div><div class="s">{{ summary.wins }} won · {{ summary.losses }} lost</div></div>
+    <div class="stat"><div class="lbl-up">Win rate</div><div class="v" style="font-size:21px">{{ D.pct(summary.win_rate, 0) }}</div></div>
+    <div class="stat"><div class="lbl-up">Net P/L</div><div class="v c-{{ D.tone(summary.net) }}" style="font-size:21px">{{ D.smoney(summary.net) }}</div></div>
+    <div class="stat"><div class="lbl-up">Profit factor</div><div class="v" style="font-size:21px">{{ '%.2f'|format(summary.pf) if summary.pf else '—' }}</div></div>
+    <div class="stat"><div class="lbl-up">Avg win / loss</div><div class="v" style="font-size:17px"><span class="c-g">{{ D.smoney(summary.avg_win, 0) }}</span> <span class="faint">/</span> <span class="c-r">{{ D.smoney(summary.avg_loss, 0) }}</span></div></div>
+    <div class="stat"><div class="lbl-up">Expectancy</div><div class="v c-{{ D.tone(summary.expectancy_r if summary.expectancy_r is not none else summary.expectancy_usd) }}" style="font-size:21px">{% if summary.expectancy_r is not none %}{{ '%+.2fR'|format(summary.expectancy_r) }}{% else %}{{ D.smoney(summary.expectancy_usd) }}{% endif %}</div><div class="s">per trade</div></div>
+  </div>
+  {% endif %}
+  <div class="note">{% if n_match > entries|length %}Showing the latest {{ entries|length }} of {{ n_match }} matching trades. {% endif %}Trades sync automatically from your MT5 terminal. Kora's note compares each entry with its analysis at the time. Click a card to tag and review it.</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
+    {% for j in entries %}
+    <div class="panel jcard" data-id="{{ j.id }}" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="mono faint" style="font-size:11px">{{ D.parse_dt(j.close_time).strftime('%a %b %d') }}</span>
+        <span class="mono" style="font-weight:600;font-size:13px;color:#fff" title="{{ j.symbol }}">{{ j.code }}</span>
+        <span class="dir {{ j.direction }}" style="font-size:9.5px;padding:2px 8px">{{ j.direction|upper }}</span>
+        <span class="mono c-{{ D.tone(j.pnl) }}" style="margin-left:auto;font-weight:600;font-size:14px">{{ ('%+.1fR'|format(j.r)) if j.r is not none else D.smoney(j.pnl) }}</span>
+      </div>
+      {% if j.chart %}
+        {% set cs = j.chart.candles %}
+        {% set oi = namespace(o=-1, c=-1) %}
+        {% for k in cs %}{% if oi.o < 0 and k.time >= j.open_time[:19] %}{% set oi.o = loop.index0 %}{% endif %}{% if k.time <= j.close_time[:19] or k.time[:13] <= j.close_time[:13] %}{% set oi.c = loop.index0 %}{% endif %}{% endfor %}
+        <svg data-candles='{{ cs|tojson }}' data-open-idx="{{ oi.o }}" data-close-idx="{{ oi.c }}" style="width:100%;height:74px;border-radius:11px;background:var(--bg-sunk);display:block"></svg>
+      {% else %}
+      <div style="height:74px;border-radius:11px;background:repeating-linear-gradient(115deg,rgba(255,255,255,.03),rgba(255,255,255,.03) 8px,rgba(255,255,255,.055) 8px,rgba(255,255,255,.055) 16px);border:1px dashed rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(235,235,245,.4)">Chart snapshot pending — the Kora service captures it after close</div>
+      {% endif %}
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="tag">{{ j.setup or 'Untagged setup' }}</span>
+        {% if j.emotion %}<span class="tag">Emotion: {{ j.emotion }}</span>{% endif %}
+        <span class="tag">{{ j.dur }}</span>
+        <span class="tag">{{ D.smoney(j.pnl) }}</span>
+        <span class="tint {{ 'a' if j.flags or not j.reviewed else 'g' }}" style="margin-left:auto;font-family:var(--font-display);font-weight:600;font-size:10px;border-radius:999px;padding:3px 10px">{{ 'Flagged' if j.flags else 'Reviewed' if j.reviewed else 'Needs review' }}</span>
+      </div>
+      {% if j.kora_note %}<div style="font-size:12px;line-height:1.55;color:rgba(235,235,245,.68)"><span class="c-b" style="font-weight:600">Kora: </span>{{ j.kora_note }}</div>{% endif %}
+      <div class="jview" style="font-size:12.5px;line-height:1.5;color:var(--muted);border-top:1px solid rgba(255,255,255,.06);padding-top:8px"><span class="c-g" style="font-weight:600">Lesson — </span><span class="jnotes">{{ j.notes or 'Not reviewed yet.' }}</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="obtn jedit-btn" type="button"><i data-lucide="pencil"></i>Review</button>
+        <a href="/trades/{{ j.id }}" class="note" style="color:var(--b)">Details</a>
+        {% if j.suggest and j.suggest != j.setup %}<button class="obtn g jsuggest" type="button" data-setup="{{ j.suggest }}" style="margin-left:auto" title="Kora had this plan live when you entered">Tag “{{ j.suggest }}”</button>{% endif %}
+      </div>
+      <form class="jform" style="display:none;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 90px;gap:8px">
+          <input class="field" name="setup" list="setup-tags" value="{{ j.setup or j.suggest or '' }}" placeholder="Setup" aria-label="Setup">
+          <select class="field" name="emotion" aria-label="Emotion"><option value="">Emotion…</option>{% for e in ['calm','confident','anxious','impulsive','fearful','frustrated','fomo','tilted'] %}<option {{ 'selected' if j.emotion == e }}>{{ e }}</option>{% endfor %}</select>
+          <input class="field" name="risk_amount" type="number" step="any" value="{{ j.risk_amount or '' }}" placeholder="Risk $" aria-label="Planned risk">
+        </div>
+        <textarea class="field" name="notes" placeholder="What did you see? What would you do differently?" style="min-height:70px">{{ j.notes or '' }}</textarea>
+        <div style="display:flex;gap:8px"><button class="btn-pri" type="submit" style="padding:7px 16px">Save</button><button class="obtn jcancel" type="button">Cancel</button></div>
+      </form>
+    </div>
+    {% else %}
+    <div class="panel" style="grid-column:1/-1"><div class="empty">No trades {{ 'match this filter' if f != 'all' else 'ingested yet — run python scripts/run_ingest.py' }}.</div></div>
+    {% endfor %}
+  </div>
+</div>
+<datalist id="setup-tags">{% for s in setups if s != 'Untagged' %}<option value="{{ s }}">{% endfor %}{% for s in my_strategies %}<option value="{{ s.name }}">{% endfor %}{% for s in ['Trend pullback','Breakout & retest','Range reversion','Liquidity sweep','Asia-range breakout'] %}<option value="{{ s }}">{% endfor %}</datalist>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  K.$$('.jcard').forEach((card) => {
+    const form = card.querySelector('.jform'), id = card.dataset.id;
+    const open = (on) => { form.style.display = on ? 'flex' : 'none'; };
+    card.querySelector('.jedit-btn').onclick = () => open(form.style.display === 'none');
+    card.querySelector('.jcancel').onclick = () => open(false);
+    const sug = card.querySelector('.jsuggest');
+    if (sug) sug.onclick = async () => { const r = await K.post('/api/annotate', { trade_id: id, setup: sug.dataset.setup });
+      if (r.ok) { K.toast('Tagged ' + sug.dataset.setup); sug.remove(); form.elements.setup.value = sug.dataset.setup; } };
+    form.onsubmit = async (e) => { e.preventDefault();
+      const f = form.elements, r = await K.post('/api/annotate', { trade_id: id, setup: f.setup.value, emotion: f.emotion.value, notes: f.notes.value, risk_amount: f.risk_amount.value });
+      if (!r.ok) return K.toast(r.message || 'Could not save');
+      card.querySelector('.jnotes').textContent = f.notes.value || 'Not reviewed yet.'; open(false); K.toast('Review saved'); };
+  });
+})();
+</script>
+{% endblock %}

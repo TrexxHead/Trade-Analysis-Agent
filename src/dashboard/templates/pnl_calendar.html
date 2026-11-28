@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen">
+  <div style="display:flex;align-items:center;gap:10px">
+    <a class="obtn" href="/pnl-calendar?year={{ py }}&month={{ pm }}">←</a>
+    <h3 class="h3 lg">{{ month_name }} {{ year }}</h3>
+    <a class="obtn" href="/pnl-calendar?year={{ ny }}&month={{ nm }}">→</a>
+    <span class="mono c-{{ D.tone(total) }}" style="margin-left:auto;font-weight:600">{{ D.smoney(total) }} this month</span>
+  </div>
+  <div class="panel">
+    <div class="grid" style="grid-template-columns:repeat(7,1fr);gap:6px">
+      {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="lbl-up" style="text-align:center">{{ d }}</div>{% endfor %}
+      {% for week in grid %}{% for c in week %}
+      <div style="min-height:70px;border-radius:11px;padding:8px;{{ 'opacity:.35;' if not c.in_month }}background:{% if c.pnl is none %}rgba(255,255,255,.03){% elif c.pnl >= 0 %}rgba(155,211,90,{{ '%.2f'|format(0.08 + c.i * 0.45) }}){% else %}rgba(255,107,97,{{ '%.2f'|format(0.08 + c.i * 0.45) }}){% endif %}">
+        <div class="mono faint" style="font-size:10.5px">{{ c.date.day }}</div>
+        {% if c.pnl is not none %}<div class="mono" style="font-weight:600;font-size:12.5px;margin-top:8px;color:#fff">{{ D.smoney(c.pnl, 0) }}</div><div class="note">{{ c.n }} trade{{ '' if c.n == 1 else 's' }}</div>{% endif %}
+      </div>
+      {% endfor %}{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen">
+  <div style="display:flex;gap:7px;flex-wrap:wrap">
+    <a class="obtn" href="/pnl-calendar"><i data-lucide="calendar-days"></i>P&amp;L calendar</a>
+    <a class="obtn" href="/mistakes"><i data-lucide="alert-octagon"></i>Rule violations</a>
+    <a class="obtn" href="/backtests"><i data-lucide="flask-conical"></i>Backtests</a>
+    <a class="obtn" href="/trades"><i data-lucide="list"></i>All trades</a>
+  </div>
+  {% if not n %}
+  <div class="panel"><div class="empty">No closed trades yet. Pull your history with <code>python scripts/run_ingest.py --source all</code> and every metric here fills in.</div></div>
+  {% else %}
+  {% macro f2(v, fmt='%.2f') %}{{ fmt|format(v) if v is not none else '—' }}{% endmacro %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px">
+    {% for l, v, t in [
+      ('Sharpe (ann.)', f2(q.sharpe), ''), ('Sortino (ann.)', f2(q.sortino), ''), ('Calmar', f2(q.calmar), ''),
+      ('Profit factor', f2(q.pf), 'r' if q.pf and q.pf < 1 else ''),
+      ('Expectancy', ('%+.2fR'|format(q.expectancy_r)) if q.expectancy_r is not none else D.smoney(q.expectancy_usd), D.tone(q.expectancy_r if q.expectancy_r is not none else q.expectancy_usd)),
+      ('Win rate', D.pct(q.win_rate, 0), ''), ('Avg win', D.smoney(q.avg_win, 0), 'g'), ('Avg loss', D.smoney(q.avg_loss, 0), 'r'),
+      ('Max DD', D.pct(q.max_dd_pct) if q.max_dd_pct is defined else '—', 'r'),
+      ('Risk of ruin (50% DD)', ('< 1%' if q.ruin_pct < 1 else D.pct(q.ruin_pct, 0)) if q.ruin_pct is defined and q.ruin_pct is not none else '—', ''),
+      ('Trades', q.trades, ''), ('Avg hold', q.avg_hold, '')] %}
+    <div class="panel" style="border-radius:13px;padding:11px 14px"><div class="mono {{ 'c-' ~ t if t }}" style="font-weight:600;font-size:17px">{{ v }}</div><div class="note" style="margin-top:2px;color:var(--subtle)">{{ l }}</div></div>
+    {% endfor %}
+  </div>
+  {% if q.sharpe is not defined or q.sharpe is none %}<div class="note">Sharpe/Sortino/Calmar need 10+ trading days and a known account balance; risk of ruin needs 20+ trades.</div>{% endif %}
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(230px,1fr) minmax(0,1.4fr)">
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:14px">Monthly returns</h3>
+      {% set mmax = (months|map(attribute='pct')|reject('none')|map('abs')|max) if months and months[0].pct is not none else (months|map(attribute='pnl')|map('abs')|max if months else 1) %}
+      <div style="display:flex;gap:10px;align-items:stretch;justify-content:center;height:150px">
+        {% for b in months %}{% set v = b.pct if b.pct is not none else b.pnl %}
+        <div style="flex:1;max-width:64px;display:flex;flex-direction:column;align-items:center">
+          <div style="flex:1;display:flex;align-items:flex-end;width:100%"><div style="width:100%;border-radius:6px 6px 2px 2px;background:var(--g);height:{{ (v / mmax * 58) if v > 0 and mmax else 0 }}px"></div></div>
+          <div style="height:1px;width:100%;background:rgba(255,255,255,.15)"></div>
+          <div style="height:44px;width:100%"><div style="width:100%;border-radius:2px 2px 6px 6px;background:var(--r);height:{{ (-v / mmax * 40) if v < 0 and mmax else 0 }}px"></div></div>
+          <span class="mono c-{{ D.tone(v) }}" style="font-size:10px;margin-top:4px">{{ ('%+.1f%%'|format(v)) if b.pct is not none else D.smoney(v, 0) }}</span>
+          <span style="font-size:10px;color:var(--subtle)">{{ b.m }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <h3 class="h3" style="margin-bottom:10px;align-self:flex-start">Win / loss</h3>
+      {% set wr = q.win_rate / 100 %}
+      <div style="position:relative;width:130px;height:130px">
+        <svg width="130" height="130" viewBox="0 0 130 130">
+          <circle cx="65" cy="65" r="54" stroke="rgba(255,107,97,.45)" stroke-width="12" fill="none"></circle>
+          <circle cx="65" cy="65" r="54" stroke="#9bd35a" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="{{ '%.1f %.1f'|format(339.3 * wr, 339.3 * (1 - wr)) }}" transform="rotate(-90 65 65)"></circle>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <span class="mono" style="font-weight:600;font-size:24px;color:#fff">{{ '%.0f'|format(q.win_rate) }}%</span>
+          <span style="font-size:9.5px;letter-spacing:.1em;color:rgba(235,235,245,.5);font-family:var(--font-display);font-weight:600">Win Rate</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:12px;font-size:11px;color:var(--muted)"><span><span class="c-g">●</span> {{ q.wins }} wins</span><span><span class="c-r">●</span> {{ q.losses }} losses</span></div>
+    </div>
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:14px">P/L distribution ({{ 'R multiples' if hist and hist.unit == 'R' else '$ per trade' }})</h3>
+      {% if hist %}{% set hmax = hist.bins|map(attribute='n')|max or 1 %}
+      <div style="display:flex;gap:6px;align-items:flex-end;height:130px">
+        {% for b in hist.bins %}
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end" title="{{ b.n }} trades">
+          <div style="width:100%;border-radius:5px 5px 2px 2px;opacity:.85;background:{{ {'g':'var(--g)','r':'var(--r)','m':'rgba(235,235,245,.55)'}[b.t] }};height:{{ b.n / hmax * 104 }}px"></div>
+          <span class="mono" style="font-size:8.5px;color:var(--faint)">{{ b.l }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if hist.unit == '$' %}<div class="note" style="margin-top:8px">Tag trades with a planned risk amount (Journal → trade) to see this in R.</div>{% endif %}
+      {% else %}<div class="empty">Needs 5+ trades.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="panel flush">
+    <div style="display:flex;align-items:center;padding:14px 18px 0"><h3 class="h3">Strategy comparison</h3><span class="note" style="margin-left:auto">By setup tag (tag trades in the Journal)</span></div>
+    <div class="hrow" style="grid-template-columns:1.4fr .7fr .7fr .7fr .9fr;padding:12px 18px 8px;border:none"><span>Strategy</span><span>Trades</span><span>Win rate</span><span>PF</span><span style="text-align:right">Net P/L</span></div>
+    {% for s in strats %}
+    <div style="display:grid;grid-template-columns:1.4fr .7fr .7fr .7fr .9fr;gap:8px;padding:10px 18px;border-top:1px solid rgba(255,255,255,.05);align-items:center">
+      <span style="font-family:var(--font-display);font-weight:600;font-size:12.5px">{{ s.n }}</span>
+      <span class="mono muted" style="font-size:12px">{{ s.t }}</span><span class="mono muted" style="font-size:12px">{{ '%.0f%%'|format(s.wr) }}</span>
+      <span class="mono {{ 'c-r' if s.pf is not none and s.pf < 1 }}" style="font-size:12px">{{ '%.2f'|format(s.pf) if s.pf is not none else '∞' }}</span>
+      <span class="mono c-{{ D.tone(s.net) }}" style="font-weight:600;font-size:12px;text-align:right">{{ D.smoney(s.net) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    {% for title, rows in [('By hour opened (UTC)', by_hour), ('By weekday', by_weekday)] %}
+    <div class="panel flush">
+      <div style="padding:14px 18px 4px"><h3 class="h3">{{ title }}</h3></div>
+      <table class="tbl"><thead><tr><th></th><th>Trades</th><th>Win rate</th><th>Net</th></tr></thead><tbody>
+      {% for r in rows %}<tr><td class="mono">{{ r.key }}</td><td class="mono">{{ r.total_trades }}</td><td class="mono">{{ '%.0f%%'|format(r.win_rate * 100) }}</td><td class="mono c-{{ D.tone(r.total_pnl) }}">{{ D.smoney(r.total_pnl) }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

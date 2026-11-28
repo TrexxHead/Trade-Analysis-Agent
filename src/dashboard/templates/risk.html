@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen">
+  <div class="grid" style="grid-template-columns:minmax(250px,1fr) minmax(250px,1fr) minmax(250px,1.2fr)">
+    <div class="panel" style="padding:18px;display:flex;flex-direction:column;align-items:center">
+      <h3 class="h3" style="margin-bottom:6px;align-self:flex-start">Risk gauge</h3>
+      <div style="position:relative;width:200px;height:118px" title="40% portfolio heat vs {{ rm.heat_cap }}% cap · 25% daily loss used · 20% drawdown buffer used · 15% any position without a stop">
+        <svg width="200" height="118" viewBox="0 0 200 118">
+          <defs><linearGradient id="krg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9bd35a"></stop><stop offset=".55" stop-color="#ffc34d"></stop><stop offset="1" stop-color="#ff6b61"></stop></linearGradient></defs>
+          <path d="M 20 105 A 80 80 0 0 1 180 105" stroke="rgba(255,255,255,.08)" stroke-width="13" fill="none" stroke-linecap="round"></path>
+          <path d="M 20 105 A 80 80 0 0 1 180 105" stroke="url(#krg)" stroke-width="13" fill="none" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="{{ '%.1f'|format(251.3 * (1 - rm.score / 100)) }}" style="transition:stroke-dashoffset .6s var(--ease-standard)"></path>
+        </svg>
+        <div style="position:absolute;inset:auto 0 0 0;text-align:center">
+          <div class="mono" style="font-weight:600;font-size:30px;color:#fff">{{ rm.score }}</div>
+          <div class="c-{{ rm.label_tone }}" style="font-size:10px;letter-spacing:.12em;font-family:var(--font-display);font-weight:600">{{ rm.label }}</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;width:100%" class="split"><span>Account health</span><span class="mono c-{{ 'g' if rm.health >= 70 else 'a' if rm.health >= 45 else 'r' }}">{{ rm.health }} / 100</span></div>
+      {% if rm.uncapped %}<div class="warn" style="margin-top:12px;width:100%"><i data-lucide="alert-triangle"></i><span>{{ rm.uncapped|map(attribute='code')|join(', ') }} {{ 'has' if rm.uncapped|length == 1 else 'have' }} no stop-loss — downside is uncapped.</span></div>{% endif %}
+    </div>
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:12px">Exposure by asset class <span class="note" style="font-weight:500">(share of open risk)</span></h3>
+      <div style="display:flex;flex-direction:column;gap:11px">
+        {% for e in rm.expo %}
+        <div><div class="split" style="font-size:11.5px"><span>{{ e.l }}</span><span class="mono">{{ '%.0f%%'|format(e.v) }}</span></div>
+          <div class="bar t7" style="margin-top:5px"><i class="bg-{{ {'Synthetics':'g','Metals':'a','Forex':'b'}.get(e.l,'m') }}" style="width:{{ e.v }}%"></i></div></div>
+        {% else %}<div class="empty">No positions with a stop-loss.</div>{% endfor %}
+      </div>
+      <h3 class="h3" style="margin:16px 0 10px">Risk by position <span class="note" style="font-weight:500">(% of equity to stop)</span></h3>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        {% for p in pos %}
+        <div style="display:flex;align-items:center;gap:10px;font-size:11.5px">
+          <span class="mono" style="width:70px;color:rgba(235,235,245,.65)">{{ p.code }}</span>
+          <div class="bar" style="flex:1"><i class="bg-{{ 'b' if p.risk_pct is not none else 'r' }}" style="width:{{ [100, (p.risk_pct / 2 * 100) if p.risk_pct is not none else 100]|min }}%"></i></div>
+          <span class="mono" style="color:rgba(235,235,245,.7)">{{ D.pct(p.risk_pct) if p.risk_pct is not none else 'no SL' }}</span>
+        </div>
+        {% else %}<div class="empty">No open positions.</div>{% endfor %}
+      </div>
+    </div>
+    <div class="panel">
+      <h3 class="h3" style="margin-bottom:12px">Value at risk &amp; stress</h3>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+        <div class="tile" style="padding:11px 13px;border-radius:12px"><div class="l" style="font-size:10px;line-height:1.4">Value at Risk (95%, 1-day, historical)</div><div class="v" style="font-size:16px;margin-top:4px">{{ D.smoney(var95, 0) if var95 is not none else '—' }}</div>{% if var95 is none %}<div class="note">needs 20 trading days ({{ trade_days }} so far)</div>{% endif %}</div>
+        <div class="tile" style="padding:11px 13px;border-radius:12px"><div class="l" style="font-size:10px;line-height:1.4">Expected drawdown (next 20 trades, bootstrapped median)</div><div class="v" style="font-size:16px;margin-top:4px">{{ D.smoney(exp_dd, 0) if exp_dd is not none else '—' }}</div>{% if exp_dd is none %}<div class="note">needs 15+ closed trades</div>{% endif %}</div>
+        <div class="tile" style="padding:11px 13px;border-radius:12px"><div class="l" style="font-size:10px;line-height:1.4">Stress — every stop hit</div><div class="v" style="font-size:16px;margin-top:4px">{{ D.smoney(-rm.total_risk, 0) }}</div></div>
+        <div class="tile" style="padding:11px 13px;border-radius:12px"><div class="l" style="font-size:10px;line-height:1.4">Stress — vol shock ×2 (gaps through stops)</div><div class="v" style="font-size:16px;margin-top:4px">{{ D.smoney(-2 * rm.total_risk, 0) }}</div></div>
+        <div class="tile" style="padding:11px 13px;border-radius:12px;grid-column:span 2"><div class="l" style="font-size:10px;line-height:1.4">Correlation-adjusted heat (√ wᵀCw using live H1 correlations) vs raw heat</div><div class="v" style="font-size:16px;margin-top:4px">{{ D.pct(rm.heat_adj) }} <span class="faint" style="font-size:12px">vs {{ D.pct(rm.heat) }} raw · cap {{ rm.heat_cap }}%</span></div></div>
+      </div>
+      <div class="split" style="margin-top:12px"><span>Daily loss limit ({{ rm.max_daily_pct }}%)</span><span class="mono">{{ D.money(rm.loss_used, 0) }} / {{ D.money(rm.loss_limit, 0) }}</span></div>
+      <div class="bar t7" style="margin:5px 0 10px"><i class="bg-g" style="width:{{ [100, (rm.loss_used / rm.loss_limit * 100) if rm.loss_limit else 0]|min }}%"></i></div>
+      <div class="split"><span>Trailing drawdown buffer ({{ rm.max_dd_pct }}% · {{ D.money(rm.dd_buffer, 0) }})</span><span class="mono">{{ '%.0f%% used'|format(rm.dd_used) if rm.dd_used is not none else '—' }}</span></div>
+      <div class="bar t7" style="margin-top:5px"><i class="bg-b" style="width:{{ [100, rm.dd_used or 0]|min }}%"></i></div>
+    </div>
+  </div>
+  <div class="panel">
+    {% set cm = rm.corr %}
+    <div class="ph"><h3 class="h3">Correlation heatmap — watched instruments</h3><span class="r">{% if cm.codes %}Pearson, H1 returns, last {{ cm.bars }} common bars{% endif %}</span></div>
+    {% if cm.codes %}
+    <div style="overflow-x:auto">
+      <div style="display:flex;gap:5px;margin-left:76px;margin-bottom:5px">{% for s in cm.codes %}<span class="mono" style="width:58px;flex:none;text-align:center;font-size:10px;color:rgba(235,235,245,.5)">{{ s }}</span>{% endfor %}</div>
+      {% for a in cm.codes %}
+      <div style="display:flex;gap:5px;margin-bottom:5px;align-items:center">
+        <span class="mono" style="width:70px;flex:none;font-size:10px;color:rgba(235,235,245,.5)">{{ a }}</span>
+        {% for b in cm.codes %}{% set v = cm.matrix[a][b] %}
+        <span class="mono" style="width:58px;height:32px;flex:none;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10.5px;
+          {% if v is none %}background:rgba(255,255,255,.03);color:var(--faint){% elif v > 0 %}background:rgba(155,211,90,{{ '%.2f'|format(v * 0.5 + 0.05) }});color:{{ '#0b0d0c' if v > 0.6 else 'rgba(235,235,245,.78)' }}{% else %}background:rgba(255,107,97,{{ '%.2f'|format(-v * 0.55 + 0.05) }});color:{{ '#0b0d0c' if v < -0.6 else 'rgba(235,235,245,.78)' }}{% endif %}">{{ '%.2f'|format(v) if v is not none else '—' }}</span>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="note" style="margin-top:8px">Positions on instruments correlated above 0.65 stack risk — the correlation-adjusted heat above accounts for it. Synthetic indices are generated independently, so near-zero readings between them are expected.</div>
+    {% else %}<div class="empty">Correlations are computed each Kora cycle from H1 candles — start the service to populate this.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

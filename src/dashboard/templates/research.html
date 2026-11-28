@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro r2(v) %}{% if v is none or v is undefined %}—{% else %}<span class="c-{{ 'g' if v > 0 else 'r' if v < 0 else 'w' }}">{{ '%+.2fR'|format(v) }}</span>{% endif %}{% endmacro %}
+<div class="screen">
+  <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);align-items:start">
+    <div class="panel">
+      <div class="ph"><h3 class="h3 lg">How Kora decides what works</h3><span class="r">{% if store.ran_at %}Last run <span data-localtime="{{ store.ran_at }}" data-fmt="datetime"></span> · {{ store.source or '' }}{% else %}Not run yet{% endif %}</span></div>
+      <div class="note" style="line-height:1.6">Every strategy in the library ({{ n_presets }} documented methods) plus your own saved strategies is tested on your instruments with rules that stop luck from looking like skill:</div>
+      <ol class="rules-list">
+        <li><b>Chronological split.</b> Settings, variant and timeframe are picked on the first {{ (method.IS_FRAC * 100)|int }}% of history. The last {{ ((1 - method.IS_FRAC) * 100)|int }}% is never seen until the final test.</li>
+        <li><b>Costs.</b> Every trade pays the spread. Boom/Crash stops hit by a spike get extra slippage.</li>
+        <li><b>Enough trades.</b> At least {{ method.MIN_IS }} in-sample and {{ method.MIN_OOS }} out-of-sample.</li>
+        <li><b>Luck haircut.</b> Testing many strategies makes some look good by chance, so confidence is adjusted for how many were tried (Sidak correction on a bootstrap p-value).</li>
+        <li><b>Families.</b> Related strategies (e.g. all trend followers) are also tested as one portfolio. Every member counts, winners and losers, so nothing is cherry-picked.</li>
+        <li><b>Promotion at {{ (method.PROMOTE_AT * 100)|int }}%.</b> Only then does a strategy feed Kora's live plans{% if not live %} (switched off in Settings){% endif %}. Everything is re-tested every week on fresh data and dropped if it stops passing.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3 class="h3 lg" style="margin-bottom:8px">Run it</h3>
+      <div class="note">Uses the best data source available (your MT5 terminal when it's open). Takes a few minutes.</div>
+      <button class="btn-pri" id="rs-run" style="margin-top:12px" {{ 'disabled' if job.running }}>{{ 'Running…' if job.running else 'Re-run research now' }}</button>
+      <div class="note" id="rs-status" style="margin-top:8px">{{ job.progress if job.running else (job.error or '') }}</div>
+      <div class="note" style="margin-top:12px">Or from a terminal: <code>py -3.13 scripts/research.py</code></div>
+    </div>
+  </div>
+
+  {% if not insts %}
+  <div class="panel"><div class="empty">No research yet. Press <b>Re-run research now</b>.</div></div>
+  {% endif %}
+
+  {% for inst in insts %}
+  <div class="panel flush">
+    <div style="padding:18px 22px 4px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">
+      <h3 class="h3 lg">{{ inst.code }}</h3>
+      {% if inst.passed %}<span class="tint g">{{ inst.passed|length }} passed</span>{% else %}<span class="tint m">nothing passed</span>{% endif %}
+      <span class="note">spread {{ '%.4g'|format(inst.cost or 0) }} · {% for tf, n in (inst.bars or {}).items() %}{{ tf }} {{ n }} candles{{ ' · ' if not loop.last }}{% endfor %}</span>
+    </div>
+    <div style="padding:6px 22px 10px"><div class="info"><i data-lucide="book-open"></i><span><b>Published evidence:</b> {{ inst.evidence.verdict }}</span></div></div>
+    {% if inst.families %}
+    <div style="padding:0 22px 10px;display:flex;gap:8px;flex-wrap:wrap">
+      {% for fam, f in inst.families.items() %}
+      <span class="fam {{ 'pass' if f.promoted }}" title="{{ f.members }} strategies, {{ f.days }} active days out of sample{% if f.positive_members is defined %}, {{ f.positive_members }} positive{% endif %}">
+        {{ fam }} · {% if f.confidence is not none %}{{ '%.0f'|format(f.confidence) }}%{% else %}n/a{% endif %}{% if f.expectancy is not none %} · {{ '%+.2f'|format(f.expectancy) }}R/day{% endif %}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Strategy</th><th>Chart</th><th>In-sample</th><th>Unseen data</th><th>PF</th><th>Halves</th><th style="min-width:130px">Confidence</th><th>Verdict</th></tr></thead><tbody>
+    {% for r in inst.rows %}
+    {% set o = r.oos_stats or {} %}{% set i = r.is_stats or {} %}
+    <tr>
+      <td><a href="/strategies?s={{ ('my:' ~ r.preset[3:]) if r.mine else ('lib:' ~ r.preset) }}&code={{ inst.code }}&tf={{ r.tf or 'H1' }}&run=1" style="font-weight:600;color:#fff">{{ r.name }}</a><div class="faint" style="font-size:11.5px">{{ r.family }}</div></td>
+      <td>{{ r.tf or '—' }}</td>
+      <td>{{ r2(i.expectancy) }}{% if i.n %} <span class="faint">· {{ i.n }}</span>{% endif %}</td>
+      <td>{{ r2(o.expectancy) }}{% if o.n %} <span class="faint">· {{ o.n }}</span>{% endif %}</td>
+      <td>{{ o.pf if o.pf is not none else '—' }}</td>
+      <td>{% if r.oos_halves %}{{ r2(r.oos_halves[0]) }} / {{ r2(r.oos_halves[1]) }}{% else %}—{% endif %}</td>
+      <td>{% if r.confidence is not none %}<div class="confbar"><span style="width:{{ r.confidence }}%" class="{{ 'g' if r.promoted else 'a' if r.confidence >= 40 else 'r' }}"></span></div><span class="faint" style="font-size:11.5px">{{ '%.0f'|format(r.confidence) }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td style="max-width:380px">{% if r.promoted %}<span class="tint g">{{ 'passed (family)' if r.via_family else 'passed' }}</span>{% elif r.status == 'tested' %}<span class="tint a">not proven</span>{% elif r.status == 'rejected_is' %}<span class="tint r">failed in-sample</span>{% else %}<span class="tint m">no data</span>{% endif %}
+        <div class="faint" style="font-size:11.5px;margin-top:3px">{{ r.note }}</div></td>
+    </tr>
+    {% endfor %}
+    </tbody></table></div>
+    {% if inst.evidence.points %}
+    <details style="padding:10px 22px 16px"><summary class="note" style="cursor:pointer">Sources Kora cross-checked for {{ inst.code }}</summary>
+      <ul class="src-list">{% for text, who, url in inst.evidence.points %}<li>{{ text }} <a href="{{ url }}" target="_blank" rel="noopener">{{ who }}</a></li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA, btn = K.$('#rs-run'), st = K.$('#rs-status');
+  async function poll() {
+    const r = await (await fetch('/api/research')).json();
+    st.textContent = r.running ? r.progress : (r.error ? 'Failed: ' + r.error : r.progress);
+    if (r.running) setTimeout(poll, 2500); else if (r.progress === 'Done') location.reload(); else { btn.disabled = false; btn.textContent = 'Re-run research now'; }
+  }
+  btn.onclick = async () => { btn.disabled = true; btn.textContent = 'Running…'; const r = await K.post('/api/research', {}); K.toast(r.message); poll(); };
+  {% if job.running %}poll();{% endif %}
+})();
+</script>
+{% endblock %}

@@ -125,3 +125,12 @@ Tick items off as they land. Screens as of this date: `docs/snapshots/2026-11-27
 - [x] Lab page: paper equity, style comparison, backtest vs forward vs paper vs your trades, refinement log, controls
 - [x] Risk % / max risk % in Settings
 - [ ] Opt-in real Deriv **demo** execution via a second MT5 terminal (demo-only gate) — needs a demo login
+
+## Your strategies (2026-11-28)
+- [x] Saved strategies with an editable rules template (EMA cross + Stochastic zones, your Boom/Crash method) - duplicate, tweak, delete
+- [x] Per-instrument switch: Kora / Mine / Both, plus which saved strategy is on
+- [x] Backtest of every exit style x higher-TF filter, buys vs sells, drawdown and loss streaks; spike-aware stop fills
+- [x] Your plans flow into the brief (with exit plan), alerts, forward tracking, paper trading and the Lab comparison
+- [x] "Boom/Crash (yours)" chart template with the zone line
+- [ ] Paper-trade your strategy's indicator exits live (EMA trail / opposite zone) - backtest covers them today
+- [ ] More strategy templates (tell Kora about your other strategies)

@@ -185,3 +185,59 @@ def test_resolve_plans_handles_unfilled_limit(tmp_path, monkeypatch):
     asyncio.run(svc.resolve_plans({"CRASH1000": {"H1": [{"time": "x"}]}}))
     from src.store.db import list_decisions
     assert "limit never filled" in list_decisions(conn, 1)[0]["action"]
+
+
+def _bc_candles(n=900, seed=3):
+    import random
+    from datetime import datetime, timedelta, timezone
+    rnd = random.Random(seed)
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    px, out = 5000.0, []
+    for i in range(n):
+        drift = 4 * (1 if (i // 120) % 2 == 0 else -1)      # alternating trend legs => EMA crosses through the zones
+        o = px
+        px = max(100, px + drift + rnd.gauss(0, 6))
+        out.append({"time": (t0 + timedelta(minutes=15 * i)).isoformat(), "open": o, "high": max(o, px) + 3, "low": min(o, px) - 3,
+                    "close": px, "volume": 1})
+    return out
+
+
+def test_strategy_signals_backtest_and_live():
+    from src.analyst import strategies as S
+    c = _bc_candles()
+    meta = {"code": "CRASH1000", "symbol": "Crash 1000 Index"}
+    bt = S.backtest(c, S.DEFAULT_PARAMS, meta)
+    none = [g for g in bt["grid"] if g["htf"] == "none"]
+    assert len(bt["grid"]) == len(S.EXITS) * len(S.HTF_VARIANTS)
+    assert none[0]["all"]["n"] > 0                                  # crosses out of the zones are found
+    ind = S.Ind(c, S.DEFAULT_PARAMS)
+    for t in none[0]["trades"]:
+        i = next(k for k, x in enumerate(c) if x["time"] == t["time"])
+        s = S.signal_at(ind, i, {**S.DEFAULT_PARAMS, "max_late_bars": 0}, "none")
+        sign = 1 if s["direction"] == "long" else -1
+        x = s["cross"]
+        assert sign * (ind.fast[x] - ind.slow[x]) > 0 >= sign * (ind.fast[x - 1] - ind.slow[x - 1])   # a real cross
+        assert i - x == S.DEFAULT_PARAMS["confirm_bars"]                                                # 2nd candle after
+    # no lookahead: the signal at bar i is unchanged when future candles are removed
+    t = none[0]["trades"][0]
+    i = next(k for k, x in enumerate(c) if x["time"] == t["time"])
+    s_full = S.signal_at(ind, i, {**S.DEFAULT_PARAMS, "max_late_bars": 0}, "none")
+    s_cut = S.signal_at(S.Ind(c[:i + 1], S.DEFAULT_PARAMS), i, {**S.DEFAULT_PARAMS, "max_late_bars": 0}, "none")
+    assert s_full["entry"] == s_cut["entry"] and s_full["stop"] == s_cut["stop"]
+    # drift-only on Crash = buys only
+    d = S.backtest(c, {**S.DEFAULT_PARAMS, "directions": "drift"}, meta)
+    assert all(g["short"]["n"] == 0 for g in d["grid"])
+    st = {**S.DEFAULT_STRATEGY, "params": dict(S.DEFAULT_PARAMS)}
+    assert S.live_state(c, st)["ok"]
+    assert isinstance(S.live_candidates(c, st, meta, {}), list)
+    assert S.stats_rows(bt, st) and "per trade" in S.summary(bt, st)
+
+
+def test_strategy_modes_and_switching():
+    from src.analyst import strategies as S
+    s = {"strategies": None, "modes": {}, "active_strategy": {}}
+    assert S.mode_for(s, "BOOM1000") == "both" and S.mode_for(s, "XAUUSD") == "kora"
+    assert S.active_for(s, "CRASH1000")["id"] == "ema_stoch_bc"
+    s["active_strategy"] = {"CRASH1000": "ema_stoch_drift_m5", "BOOM1000": ""}
+    assert S.active_for(s, "CRASH1000")["params"]["entry_tf"] == "M5"
+    assert S.active_for(s, "BOOM1000") is None

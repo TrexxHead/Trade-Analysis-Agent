@@ -54,6 +54,10 @@
       const kk = c.map((_, i) => { if (i < p.k - 1) return null; const w = c.slice(i - p.k + 1, i + 1), hi = Math.max(...w.map((x) => x.high)), lo = Math.min(...w.map((x) => x.low)); return hi === lo ? 50 : ((c[i].close - lo) / (hi - lo)) * 100; });
       return [{ v: kk }, { v: sma(kk.map((x) => x ?? 0), p.d).map((x, i) => (kk[i] == null ? null : x)), color: '#ffc34d' }];
     } },
+    zone: { name: 'Stoch zone (EMA)', pane: true, params: { ema: 10, lookback: 200 }, color: '#ff6b4a', range: [0, 100], levels: [20, 80], calc: (c, p) => {
+      const e = ema(c.map((k) => k.close), p.ema);
+      return [{ v: e.map((v, i) => { if (v == null) return null; const w = e.slice(Math.max(0, i - p.lookback + 1), i + 1).filter((x) => x != null); if (w.length < Math.min(p.lookback, 30)) return null; const lo = Math.min(...w), hi = Math.max(...w); return hi === lo ? 50 : ((v - lo) / (hi - lo)) * 100; }) }];
+    } },
     volume: { name: 'Volume', pane: true, params: {}, color: 'rgba(235,235,245,.35)', calc: (c) => [{ v: c.map((k) => k.volume ?? 0), bars: true }] },
   };
   K.INDICATOR_TYPES = TYPES;

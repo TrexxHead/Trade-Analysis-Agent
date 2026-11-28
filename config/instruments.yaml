@@ -30,7 +30,7 @@ timeframes:
   D1: 220
   H4: 300
   H1: 400
-  M15: 300
+  M15: 500
 
 # The timeframe entry plans are built on (H4/D1 provide the higher-timeframe filter).
 execution_timeframe: H1

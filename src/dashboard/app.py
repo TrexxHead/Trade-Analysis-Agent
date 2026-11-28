@@ -64,6 +64,7 @@ PAGES = {
     "charts": ("Charts", "Multi-timeframe workspace", "/charts", "candlestick-chart"),
     "kora": ("Kora", "Market analyst · setups & reasoning · never trades", "/kora", "bot"),
     "lab": ("Lab", "Kora's paper trading & self-refinement", "/lab", "flask-conical"),
+    "strategies": ("Strategies", "Your saved strategies vs Kora", "/strategies", "git-branch"),
     "positions": ("Positions", "Open trades & history", "/positions", "layers"),
     "risk": ("Risk", "Exposure, limits & stress", "/risk", "shield"),
     "analytics": ("Analytics", "Quant performance review", "/analytics", "bar-chart-3"),
@@ -261,7 +262,12 @@ def lab():
     pap: dict = {}
     for t in done:
         pap.setdefault((t["code"], t["setup"]), []).append(t["r"] or 0)
-    name_to_id = {v.lower(): k for k, v in SETUP_NAMES.items()}
+    from src.analyst import strategies as ST
+    all_names = dict(SETUP_NAMES)
+    for st in ST.saved(get_settings(conn)):
+        all_names[f"my:{st['id']}"] = f"{st['name']} (yours)"
+    name_to_id = {v.lower(): k for k, v in all_names.items()}
+    name_to_id.update({st["name"].lower(): f"my:{st['id']}" for st in ST.saved(get_settings(conn))})
     s2c = D.symbol_to_code()
     mine: dict = {}
     for t in get_trades(conn):
@@ -270,7 +276,7 @@ def lab():
             mine.setdefault((s2c[t["symbol"]], sid), []).append(t["pnl"] / t["risk_amount"] if t.get("risk_amount") else None)
     edge = []
     for code in watchlist_codes(get_settings(conn)):
-        for sid, sname in SETUP_NAMES.items():
+        for sid, sname in all_names.items():
             k = (code, sid)
             if not any(k in m for m in (bt, fwd, pap, mine)):
                 continue
@@ -303,6 +309,101 @@ def api_lab():
     if body.get("action") == "retrain":
         kv_set(conn, "retrain_now", True)
         return jsonify({"ok": True, "message": "Retraining queued - the Kora service picks it up within a minute."})
+    return jsonify({"ok": False, "message": "Unknown action"}), 400
+
+
+@app.route("/strategies")
+def strategies_page():
+    from src.analyst import strategies as ST
+    from src.analyst.config import watchlist_codes
+    conn = _conn()
+    settings = get_settings(conn)
+    reps = D.watched_analyses(conn)
+    strats = ST.saved(settings)
+    rows = []
+    for code in watchlist_codes(settings):
+        act = ST.active_for(settings, code)
+        rows.append({"code": code, "mode": ST.mode_for(settings, code), "active": act["id"] if act else "",
+                     "state": (reps.get(code) or {}).get("strategy")})
+    store = kv_get(conn, "strategy_bt", {}) or {}
+    summaries = {s["id"] + code: ST.summary(bt, s) for s in strats for code, bt in (store.get(s["id"]) or {}).items()}
+    return render_template("strategies.html", active="strategies", rows=rows, strategies=strats, templates=ST.TEMPLATES,
+                           exits=ST.EXITS, bt_store=store, summaries=summaries, bt_codes=watchlist_codes(settings))
+
+
+@app.route("/api/strategies", methods=["POST"])
+def api_strategies():
+    import re
+    import uuid as _uuid
+    from src.analyst import strategies as ST
+    from src.analyst.config import by_code
+    conn = _conn()
+    body = request.get_json(force=True) or {}
+    cur = kv_get(conn, "settings", {}) or {}
+    settings = get_settings(conn)
+    strats = ST.saved(settings)
+    act, sid = body.get("action"), body.get("id")
+    find = next((s for s in strats if s["id"] == sid), None)
+
+    def save(msg):
+        cur["strategies"] = strats
+        kv_set(conn, "settings", cur)
+        return jsonify({"ok": True, "message": msg})
+
+    if act == "mode":
+        if body.get("mode") not in ("kora", "mine", "both"):
+            return jsonify({"ok": False, "message": "Unknown mode"}), 400
+        cur.setdefault("modes", {})[body["code"]] = body["mode"]
+        kv_set(conn, "settings", cur)
+        return jsonify({"ok": True, "message": f"{body['code']}: plans from {body['mode']} from the next cycle"})
+    if act == "active":
+        cur.setdefault("active_strategy", {})[body["code"]] = sid or ""
+        kv_set(conn, "settings", cur)
+        return jsonify({"ok": True, "message": f"{body['code']}: " + (f"using {find['name']}" if find else "no strategy")})
+    if act == "save" and find:
+        d = body.get("data") or {}
+        num = {"fast": (2, 400), "slow": (3, 800), "zone_ema": (1, 200), "zone_lookback": (30, 2000), "buy_zone": (0, 50),
+               "sell_zone": (50, 100), "zone_within": (0, 200), "confirm_bars": (1, 10), "max_late_bars": (0, 20),
+               "stop_atr": (0.2, 10), "max_hold": (2, 500)}
+        for k, (lo, hi) in num.items():
+            if k in d and str(d[k]).strip() != "":
+                v = float(d[k])
+                find["params"][k] = max(lo, min(hi, v if k == "stop_atr" else int(v)))
+        choices = {"entry_tf": ("M5", "M15"), "htf": ("none", "M30", "H1"), "directions": ("both", "drift", "long", "short"),
+                   "stop": ("swing", "atr"), "exit": tuple(ST.EXITS)}
+        for k, ok in choices.items():
+            if d.get(k) in ok:
+                find["params"][k] = d[k]
+        if find["params"]["fast"] >= find["params"]["slow"]:
+            return jsonify({"ok": False, "message": "The fast EMA must be shorter than the slow EMA"}), 400
+        find["name"] = (d.get("name") or find["name"]).strip()[:48]
+        find["notes"] = (d.get("notes") or "").strip()[:600]
+        find["instruments"] = [c for c in re.split(r"[,\s]+", (d.get("instruments") or "").upper()) if c][:20]
+        return save(f"Saved {find['name']}. Run a backtest to see how it does.")
+    if act == "duplicate" and find:
+        strats.append({**find, "id": "s_" + _uuid.uuid4().hex[:8], "name": (find["name"] + " (copy)")[:48],
+                       "params": dict(find["params"]), "instruments": []})
+        return save("Duplicated - tweak the copy and compare the backtests")
+    if act == "delete" and find:
+        strats[:] = [s for s in strats if s["id"] != sid]
+        store = kv_get(conn, "strategy_bt", {}) or {}
+        store.pop(sid, None)
+        kv_set(conn, "strategy_bt", store)
+        return save(f"Deleted {find['name']}")
+    if act == "backtest" and find:
+        meta = by_code().get(body.get("code") or "")
+        if not meta:
+            return jsonify({"ok": False, "message": "Unknown instrument"}), 400
+        try:
+            tf = find["params"]["entry_tf"]
+            candles = ST.history(meta, tf, ST.bars_for_backtest(tf))
+            bt = ST.backtest(candles, find["params"], meta)
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"Backtest failed: {e}"}), 500
+        store = kv_get(conn, "strategy_bt", {}) or {}
+        store.setdefault(sid, {})[meta["code"]] = ST.compact(bt)
+        kv_set(conn, "strategy_bt", store)
+        return jsonify({"ok": True, "message": ST.summary(bt, find)})
     return jsonify({"ok": False, "message": "Unknown action"}), 400
 
 
@@ -710,6 +811,13 @@ def api_drawings():
 def api_chart_templates():
     conn = _conn()
     store = kv_get(conn, "chart_templates", {"templates": {}, "default": None}) or {"templates": {}, "default": None}
+    if not store.get("seeded_bc"):
+        store["templates"].setdefault("Boom/Crash (yours)", [
+            {"type": "ema", "params": {"period": 14}, "color": "#2f6bff"},
+            {"type": "ema", "params": {"period": 50}, "color": "#ff453a"},
+            {"type": "zone", "params": {"ema": 10, "lookback": 200}, "color": "#ff6b4a"}])
+        store["seeded_bc"] = True
+        kv_set(conn, "chart_templates", store)
     if request.method == "POST":
         body = request.get_json(force=True) or {}
         name = (body.get("name") or "").strip()[:40]

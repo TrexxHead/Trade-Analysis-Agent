@@ -45,6 +45,7 @@ def retrain(conn, history_fn, days: int = 180) -> str:
                 notes.append(f"{code}: only {len(h1)} candles, skipped")
                 continue
             rows = train_instrument(h1, meta)
+            rows += _strategy_rows(conn, meta, notes)
             save_setup_stats(conn, code, rows, "H1", days)
             best = max(rows, key=lambda r: r["expectancy"] if r["n"] >= 15 else -9, default=None)
             notes.append(f"{code}: {len(h1)} bars" + (f", best {best['setup']} {best['direction']} {best['expectancy']:+.2f}R" if best else ""))
@@ -57,6 +58,30 @@ def retrain(conn, history_fn, days: int = 180) -> str:
     add_decision(conn, "RETRAIN — Kora re-calibrated its setups on fresh history", "b",
                  f"Weekly self-calibration (no lookahead, conservative fills). {summary}")
     return summary
+
+
+def _strategy_rows(conn, meta: dict, notes: list) -> list[dict]:
+    """Backtest every saved strategy assigned to this instrument and return
+    calibration rows for it (stored backtests show on the Strategies page)."""
+    from src.analyst import strategies as ST
+    settings = get_settings(conn)
+    store = kv_get(conn, "strategy_bt", {}) or {}
+    rows = []
+    for st in ST.saved(settings):
+        on = (ST.active_for(settings, meta["code"]) or {}).get("id") == st["id"]
+        if not on and meta["code"] not in (st.get("instruments") or []):
+            continue
+        try:
+            tf = st["params"]["entry_tf"]
+            candles = ST.history(meta, tf, ST.bars_for_backtest(tf))
+            bt = ST.backtest(candles, st["params"], meta)
+            store.setdefault(st["id"], {})[meta["code"]] = ST.compact(bt)
+            rows += ST.stats_rows(bt, st)
+            notes.append(f"{meta['code']} · {st['name']}: {ST.summary(bt, st)}")
+        except Exception as e:
+            notes.append(f"{meta['code']} · {st['name']}: backtest failed ({e})")
+    kv_set(conn, "strategy_bt", store)
+    return rows
 
 
 def auto_tune(conn) -> list[str]:

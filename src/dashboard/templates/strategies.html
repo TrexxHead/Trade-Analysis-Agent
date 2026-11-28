@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="screen">
+  <div class="info"><i data-lucide="git-branch"></i><span>Your saved strategies. For each instrument choose whose plans you get: <b>Kora</b>'s setups, <b>your</b> strategy, or <b>both</b> ranked side by side. Brief, alerts, paper trading and the Lab follow your choice, so you can compare like for like.</span></div>
+
+  <div class="panel flush" style="overflow-x:auto">
+    <div style="padding:18px 22px 6px"><h3 class="h3 lg">Who analyses what</h3><div class="note">Live state comes from Kora's latest cycle.</div></div>
+    <table class="tbl"><thead><tr><th>Instrument</th><th>Plans from</th><th>Strategy</th><th>Live state</th></tr></thead><tbody>
+    {% for row in rows %}<tr>
+      <td style="font-weight:600;color:#fff">{{ row.code }}</td>
+      <td><div class="seg" data-code="{{ row.code }}">{% for k, l in [('kora', 'Kora'), ('mine', 'Mine'), ('both', 'Both')] %}<a class="fchip mode {{ 'on' if row.mode == k }}" data-mode="{{ k }}">{{ l }}</a>{% endfor %}</div></td>
+      <td><select class="field act" data-code="{{ row.code }}" style="min-width:210px"><option value="">None</option>{% for s in strategies %}<option value="{{ s.id }}" {{ 'selected' if row.active == s.id }}>{{ s.name }}</option>{% endfor %}</select></td>
+      <td class="muted" style="font-size:12.5px">{% if row.state %}{{ row.state.text }}{% elif row.mode == 'kora' %}—{% else %}Waiting for the next cycle{% endif %}</td>
+    </tr>{% endfor %}
+    </tbody></table>
+  </div>
+
+  {% for s in strategies %}
+  <div class="panel" id="st-{{ s.id }}">
+    <div class="ph"><h3 class="h3 lg">{{ s.name }}</h3><span class="r">{{ templates[s.template] }}</span></div>
+    <div class="note" style="margin-bottom:12px">{{ s.notes }}</div>
+    <form class="stf" data-id="{{ s.id }}">
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+        <div><label class="fl">Name</label><input class="field" name="name" value="{{ s.name }}"></div>
+        <div><label class="fl">Entry chart</label><select class="field" name="entry_tf">{% for t in ['M5', 'M15'] %}<option {{ 'selected' if s.params.entry_tf == t }}>{{ t }}</option>{% endfor %}</select></div>
+        <div><label class="fl">Fast EMA</label><input class="field" type="number" name="fast" value="{{ s.params.fast }}"></div>
+        <div><label class="fl">Slow EMA</label><input class="field" type="number" name="slow" value="{{ s.params.slow }}"></div>
+        <div><label class="fl">Zone EMA</label><input class="field" type="number" name="zone_ema" value="{{ s.params.zone_ema }}"></div>
+        <div><label class="fl">Zone window (candles)</label><input class="field" type="number" name="zone_lookback" value="{{ s.params.zone_lookback }}"></div>
+        <div><label class="fl">Buy zone ≤</label><input class="field" type="number" name="buy_zone" value="{{ s.params.buy_zone }}"></div>
+        <div><label class="fl">Sell zone ≥</label><input class="field" type="number" name="sell_zone" value="{{ s.params.sell_zone }}"></div>
+        <div><label class="fl">Zone within (candles before cross)</label><input class="field" type="number" name="zone_within" value="{{ s.params.zone_within }}"></div>
+        <div><label class="fl">Confirm on candle #</label><input class="field" type="number" name="confirm_bars" value="{{ s.params.confirm_bars }}"></div>
+        <div><label class="fl">"Missed it" after (candles)</label><input class="field" type="number" name="max_late_bars" value="{{ s.params.max_late_bars }}"></div>
+        <div><label class="fl">Higher-TF filter</label><select class="field" name="htf">{% for t in ['none', 'M30', 'H1'] %}<option {{ 'selected' if s.params.htf == t }}>{{ t }}</option>{% endfor %}</select></div>
+        <div><label class="fl">Directions</label><select class="field" name="directions">{% for k, l in [('both', 'Both'), ('drift', 'Drift only (sell Boom, buy Crash)'), ('long', 'Buys only'), ('short', 'Sells only')] %}<option value="{{ k }}" {{ 'selected' if s.params.directions == k }}>{{ l }}</option>{% endfor %}</select></div>
+        <div><label class="fl">Stop</label><select class="field" name="stop">{% for k, l in [('swing', 'Beyond last 10 candles'), ('atr', 'ATR multiple')] %}<option value="{{ k }}" {{ 'selected' if s.params.stop == k }}>{{ l }}</option>{% endfor %}</select></div>
+        <div><label class="fl">Stop ATR ×</label><input class="field" type="number" step="0.1" name="stop_atr" value="{{ s.params.stop_atr }}"></div>
+        <div><label class="fl">Exit</label><select class="field" name="exit">{% for k, l in exits.items() %}<option value="{{ k }}" {{ 'selected' if s.params.exit == k }}>{{ l }}</option>{% endfor %}</select></div>
+        <div><label class="fl">Max hold (candles)</label><input class="field" type="number" name="max_hold" value="{{ s.params.max_hold }}"></div>
+        <div><label class="fl">Instruments (comma separated)</label><input class="field" name="instruments" value="{{ (s.instruments or [])|join(', ') }}"></div>
+      </div>
+      <label class="fl">Notes</label><textarea class="field" name="notes" style="min-height:56px">{{ s.notes }}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button type="submit" class="obtn b">Save</button>
+        <button type="button" class="obtn dup">Duplicate</button>
+        <button type="button" class="obtn r del">Delete</button>
+        <span style="flex:1"></span>
+        {% for code in bt_codes %}<button type="button" class="obtn g run" data-code="{{ code }}">Backtest {{ code }}</button>{% endfor %}
+      </div>
+    </form>
+
+    {% for code, bt in (bt_store.get(s.id) or {}).items() %}
+    <div style="margin-top:18px">
+      <div class="ph"><h4 class="h3">{{ code }} · {{ bt.tf }} · {{ bt.bars }} candles</h4><span class="r faint">{{ (bt.from or '')[:10] }} → {{ (bt.to or '')[:10] }}</span></div>
+      <div class="info" style="margin:8px 0"><i data-lucide="sparkles"></i><span>{{ summaries[s.id ~ code] }}</span></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Exit</th><th>HTF filter</th><th>Trades</th><th>Win</th><th>Per trade</th><th>Total</th><th>Worst drawdown</th><th>Loss streak</th><th>Buys</th><th>Sells</th></tr></thead><tbody>
+      {% for g in bt.grid|sort(attribute='all.total_r', reverse=True) if g.all.n %}
+      {% set mine = g.htf == s.params.htf and g.exit == s.params.exit %}
+      <tr {% if mine %}style="background:rgba(90,200,250,.08)"{% endif %}><td>{{ g.exit_name }}{% if mine %} <span class="tint b">yours</span>{% endif %}{% if bt.best and bt.best.exit == g.exit and bt.best.htf == g.htf %} <span class="tint g">best</span>{% endif %}</td><td>{{ g.htf }}</td><td>{{ g.all.n }}</td><td>{{ '%.0f%%'|format(g.all.win_rate) }}</td>
+        <td class="c-{{ D.tone(g.all.expectancy) }}" style="font-weight:600">{{ '%+.2fR'|format(g.all.expectancy) }}</td><td>{{ '%+.1fR'|format(g.all.total_r) }}</td><td>{{ '%.1fR'|format(g.all.max_dd_r) }}</td><td>{{ g.all.max_losing_streak }}</td>
+        <td class="c-{{ D.tone(g.long.expectancy) if g.long.n else 'w' }}">{{ ('%+.2fR'|format(g.long.expectancy) ~ ' · ' ~ g.long.n) if g.long.n else '—' }}</td>
+        <td class="c-{{ D.tone(g.short.expectancy) if g.short.n else 'w' }}">{{ ('%+.2fR'|format(g.short.expectancy) ~ ' · ' ~ g.short.n) if g.short.n else '—' }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <div class="panel">
+    <h3 class="h3 lg" style="margin-bottom:8px">About the zone line</h3>
+    <div class="note">The 10 EMA you place in the Stochastic window is an EMA of <i>price</i>, scaled to whatever price range is on screen, so its reading against 20/80 changes when you zoom. Kora measures it the same way every time: where the 10 EMA sits in its range over the last <i>zone window</i> candles (200 M15 candles is about the 2 days a phone chart shows). The <b>Boom/Crash (yours)</b> chart template on the Charts page draws exactly this line. With settings 1,1,1 the Stochastic lines themselves just jump between 0 and 100 each candle, which is why the EMA is the line that matters.</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const K = window.KORA;
+  const api = (b) => K.post('/api/strategies', b);
+  document.querySelectorAll('.mode').forEach((a) => a.onclick = async () => {
+    const seg = a.closest('.seg'); seg.querySelectorAll('.fchip').forEach((x) => x.classList.remove('on')); a.classList.add('on');
+    const r = await api({ action: 'mode', code: seg.dataset.code, mode: a.dataset.mode }); K.toast(r.message);
+  });
+  document.querySelectorAll('.act').forEach((s) => s.onchange = async () => { const r = await api({ action: 'active', code: s.dataset.code, id: s.value }); K.toast(r.message); });
+  document.querySelectorAll('.stf').forEach((f) => {
+    f.onsubmit = async (e) => { e.preventDefault(); const r = await api({ action: 'save', id: f.dataset.id, data: Object.fromEntries(new FormData(f)) }); K.toast(r.message); };
+    f.querySelector('.dup').onclick = async () => { const r = await api({ action: 'duplicate', id: f.dataset.id }); K.toast(r.message); setTimeout(() => location.reload(), 600); };
+    f.querySelector('.del').onclick = async () => { if (!confirm('Delete this strategy?')) return; const r = await api({ action: 'delete', id: f.dataset.id }); K.toast(r.message); setTimeout(() => location.reload(), 600); };
+    f.querySelectorAll('.run').forEach((b) => b.onclick = async () => {
+      b.disabled = true; const t = b.textContent; b.textContent = 'Running… (up to a minute)';
+      const r = await api({ action: 'backtest', id: f.dataset.id, code: b.dataset.code }); K.toast(r.message);
+      b.disabled = false; b.textContent = t; if (r.ok) location.reload();
+    });
+  });
+})();
+</script>
+{% endblock %}

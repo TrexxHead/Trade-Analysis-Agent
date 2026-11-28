@@ -162,7 +162,17 @@ class KoraService:
                 except Exception as e:
                     self.source.errors[m["code"]] = f"{tf} candles failed: {e}"
 
-        await asyncio.gather(*(one(m, tf, n) for m in active for tf, n in self.wl["timeframes"].items()))
+        from src.analyst import strategies as ST
+        settings = get_settings(self.conn)
+        jobs = []
+        for m in active:
+            tfs = dict(self.wl["timeframes"])
+            st = ST.active_for(settings, m["code"])
+            if st and ST.mode_for(settings, m["code"]) != "kora":
+                tf = st["params"]["entry_tf"]
+                tfs[tf] = max(tfs.get(tf, 0), st["params"]["zone_lookback"] + st["params"]["slow"] + 150)
+            jobs += [one(m, tf, n) for tf, n in tfs.items()]
+        await asyncio.gather(*jobs)
         return out
 
     async def cycle(self, state: str):
@@ -193,6 +203,7 @@ class KoraService:
                 fund = instrument_fundamentals(m, self.calendar, reads_by_code)
                 live = (quotes.get(code) or {}).get("price")
                 rep = analyse_instrument(m, candles.get(code, {}), exec_tf, fund, stats, live_price=live)
+                self.apply_strategy(rep, m, candles.get(code, {}), settings, stats)
                 self.size_candidates(rep, m, settings)
                 if rep.get("day_open"):
                     self.day_open[code] = rep["day_open"]
@@ -244,6 +255,47 @@ class KoraService:
                                          "instruments": len(reports), "setups": n_setups, "errors": errors})
         self.last_cycle = now()
         prune_analyses(self.conn)
+
+    def apply_strategy(self, rep: dict, meta: dict, candles: dict, settings: dict, stats: dict):
+        """Your saved strategy for this instrument: 'kora' leaves Kora's plans,
+        'mine' replaces them with your strategy's, 'both' ranks them together."""
+        from src.analyst import strategies as ST
+        mode = ST.mode_for(settings, meta["code"])
+        for c in rep["candidates"]:
+            c.setdefault("source", "kora")
+        rep["mode"] = mode
+        st = ST.active_for(settings, meta["code"])
+        if mode == "kora" or not st:
+            return
+        tf = st["params"]["entry_tf"]
+        c = candles.get(tf) or []
+        try:
+            rep["strategy"] = {"id": st["id"], "name": st["name"], "tf": tf, **ST.live_state(c, st)}
+            mine = ST.live_candidates(c, st, meta, stats)
+        except Exception as e:
+            rep["strategy"] = {"id": st["id"], "name": st["name"], "tf": tf, "ok": False, "text": f"error: {e}"}
+            mine = []
+        digits = rep["digits"]
+        for m in mine:
+            m["grade"] = "A" if m["confidence"] >= 70 else "B" if m["confidence"] >= 55 else "C"
+            m["timeframe"] = tf
+            m["distance_atr"] = round(abs((rep["price"] or m["entry"]) - m["entry"]) / (rep["atr"] or 1), 2)
+            m["title"] = f"{m['setup_name']} — {m['direction'].upper()} {meta['code']}"
+            m["levels_text"] = (f"Entry {m['entry']:,.{digits}f} (market) · SL {m['stop']:,.{digits}f} · TP1 {m['tp1']:,.{digits}f} (1R) · "
+                                f"TP2 {m['tp2']:,.{digits}f} (2R) · Exit: {m['exit_rule']}")
+        cands = mine if mode == "mine" else rep["candidates"] + mine
+        cands.sort(key=lambda x: -x["confidence"])
+        rep["candidates"] = cands
+        best = cands[0] if cands else None
+        if best and best.get("source") == "mine":
+            rep["headline"] = f"{best['setup_name']} {best['direction']} · {best['confidence']}%"
+            rep["verdict"] = (f"{'Actionable' if best['confidence'] >= 55 else 'Marginal'}: your strategy ({st['name']}) signals "
+                              f"{best['direction']} — {best['confidence']}% calibrated confidence. Exit plan: {best['exit_rule']}.")
+            rep["verdict_tone"] = "g" if best["confidence"] >= 55 else "a"
+        elif mode == "mine":
+            rep["headline"] = f"{st['name']}: no signal"
+            rep["verdict"] = f"Your strategy has no signal on {tf}. {rep['strategy'].get('text', '')}"
+            rep["verdict_tone"] = "r"
 
     def size_candidates(self, rep: dict, meta: dict, settings: dict):
         """Attach lots / $ risk / margin / tradability and a 0-10 rating to every plan."""

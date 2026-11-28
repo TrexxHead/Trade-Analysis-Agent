@@ -69,6 +69,8 @@ def _entry_lines(r: dict, c: dict, d: int) -> list[str]:
         lines.append(line)
     if sz.get("reason"):
         lines.append(f"  {'⛔' if sz.get('tradable') is False else '⚠'} {sz['reason']}")
+    if c.get("exit_rule"):
+        lines.append(f"  Exit plan: {c['exit_rule']}")
     why = "; ".join(c["confluence"][:2])
     lines.append(f"  Why: {why}")
     if c["against"]:
@@ -225,6 +227,11 @@ def build(conn, now: datetime | None = None) -> str:
             continue
         if e.get("impact") == "High" and e.get("currency") in ccys and timedelta(0) <= t - now_utc <= timedelta(hours=18):
             upcoming.append(f"• {t.astimezone().strftime('%H:%M')} {e['currency']} {e['title']} (fcst {e.get('forecast') or '—'}, prev {e.get('previous') or '—'})")
+    watch = [f"• {r['code']} [{ {'mine': 'your strategy only', 'both': 'yours + Kora'}.get(r.get('mode'), r.get('mode'))}] "
+             f"{r['strategy']['name']} ({r['strategy']['tf']}): {r['strategy'].get('text', '')}"
+             for code, r in reps.items() if r.get("strategy") and code in wl]
+    if watch:
+        lines += ["", "YOUR STRATEGY WATCH"] + watch
     lines += ["", "HIGH-IMPACT NEWS (next 18h)"] + (upcoming or ["• None for your instruments"])
 
     plans = list_plans(conn, limit=10000)

@@ -91,7 +91,7 @@
   let saveT = null;
   const saveDrawings = (list) => { clearTimeout(saveT); saveT = setTimeout(() => K.post('/api/drawings', { code, drawings: JSON.parse(JSON.stringify(list)) }), 250); };
   const chart = new K.Chart(K.$('#chart'), {
-    height: 540, onDrawings: saveDrawings,
+    height: window.innerWidth < 760 ? 400 : 540, onDrawings: saveDrawings,
     onHover: (k) => { if (!chart.data || !k) return; const d = chart.data.digits > 4 ? 5 : chart.data.digits; const ch = ((k.close - k.open) / k.open) * 100;
       ohlc.innerHTML = `O ${K.fm(k.open,d)} H ${K.fm(k.high,d)} L ${K.fm(k.low,d)} C ${K.fm(k.close,d)} <span class="c-${ch >= 0 ? 'g' : 'r'}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%</span>`; },
     onTool: (t) => K.$$('#rail [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t)),

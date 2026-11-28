@@ -101,6 +101,19 @@ class KoraService:
         except Exception as e:
             print(f"paper tick failed: {e}", file=sys.stderr)
 
+    def paper_rules(self, candles: dict, active: list[dict]):
+        from src.analyst import paper
+        from src.analyst.research import spread_for
+        try:
+            quotes = get_quotes(self.conn)
+            for t in paper.manage_rules(self.conn, candles, {m["code"]: m for m in active}, lambda c: spread_for(c, quotes)):
+                row = self.conn.execute("SELECT status, r, pnl, note FROM paper_trades WHERE id = ?", (t["id"],)).fetchone()
+                add_decision(self.conn, f"PAPER — {t['code']} {t['direction']} {t['setup_name']} {row['status']} ({row['r']:+.2f}R, own exit)",
+                             "g" if row["status"] == "won" else "r" if row["status"] == "lost" else "b",
+                             f"Forward test of the strategy's own exit rule: {row['note']}. Paper P/L {row['pnl']:+.2f} USD.", code=t["code"])
+        except Exception as e:
+            print(f"paper rule management failed: {e}", file=sys.stderr)
+
     def refine(self):
         """Self-refinement: weekly retrain, auto-tune losing setups, best management style."""
         from src.analyst import refine
@@ -247,6 +260,7 @@ class KoraService:
 
         self.update_correlations(candles)
         await self.resolve_plans(candles)
+        self.paper_rules(candles, active)
         kv_set(self.conn, "sparklines", {c: [round(x["close"], 6) for x in (tfs.get("H1") or [])[-48:]]
                                          for c, tfs in candles.items()})
         secs = (now() - t0).total_seconds()

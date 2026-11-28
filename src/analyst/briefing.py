@@ -232,6 +232,16 @@ def build(conn, now: datetime | None = None) -> str:
              for code, r in reps.items() if r.get("strategy") and code in wl]
     if watch:
         lines += ["", "YOUR STRATEGY WATCH"] + watch
+    research = kv_get(conn, "research") or {}
+    proven = []
+    for code in wl:
+        rows = [r for r in ((research.get("instruments") or {}).get(code) or {}).get("rows", []) if r.get("promoted")]
+        if rows:
+            fams = sorted({r["family"] for r in rows})
+            proven.append(f"• {code}: {', '.join(fams).lower()} passed out-of-sample testing "
+                          f"({max(r['confidence'] for r in rows):.0f}% confidence) - Kora includes those signals")
+    if research.get("ran_at"):
+        lines += ["", "PROVEN EDGES (Kora's research)"] + (proven or ["• Nothing on your instruments has passed yet - trade small and stick to your plan"])
     lines += ["", "HIGH-IMPACT NEWS (next 18h)"] + (upcoming or ["• None for your instruments"])
 
     plans = list_plans(conn, limit=10000)

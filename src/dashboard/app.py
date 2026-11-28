@@ -575,6 +575,29 @@ def api_strategies():
             store.setdefault(sid, {})[meta["code"]] = ST.compact(bt)
             kv_set(conn, "strategy_bt", store)
         return jsonify({"ok": True, "message": _bt_summary(bt, target), "bt": ST.compact(bt)})
+    if act == "league":
+        meta = by_code().get((body.get("code") or "").upper())
+        tf = body.get("tf") or "H1"
+        if not meta or tf not in R.TF_MIN:
+            return jsonify({"ok": False, "message": "Pick an instrument and timeframe"}), 400
+        try:
+            candles = ST.history(meta, tf, int(body.get("bars") or 8000))
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"Couldn't fetch history: {e}"}), 500
+        cost = spread_for(meta["code"], get_quotes(conn))
+        rows = []
+        entries = [("my:" + s["id"], s["name"] + " (yours)", {**ST.to_rules(s), "entry_tf": tf}) for s in strats]
+        entries += [("lib:" + p["id"], p["name"], L.preset_params(p["id"], 0, tf)) for p in L.PRESETS]
+        for ref, name, params in entries:
+            try:
+                g = R.run(candles, params, meta, exits=[R.norm(params)["exit"]], cost=cost)[0]
+                rows.append({"ref": ref, "name": name, "exit": g["exit_name"], **g["all"]})
+            except Exception as e:
+                rows.append({"ref": ref, "name": name, "error": str(e), "n": 0})
+        rows.sort(key=lambda r: (r.get("n", 0) >= 15, r.get("expectancy") or -9), reverse=True)
+        return jsonify({"ok": True, "rows": rows, "bars": len(candles), "from": candles[0]["time"] if candles else None,
+                        "to": candles[-1]["time"] if candles else None, "cost": cost,
+                        "message": f"{len(rows)} strategies on {meta['code']} {tf}, own exits, spread charged"})
     if act == "stored" and find:
         bt = ((kv_get(conn, "strategy_bt", {}) or {}).get(sid) or {}).get((body.get("code") or "").upper())
         return jsonify({"ok": bool(bt), "bt": bt, "message": _bt_summary(bt, find) if bt else "No stored backtest"})

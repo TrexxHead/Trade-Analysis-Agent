@@ -98,3 +98,26 @@ def test_ema_stoch_translates_exactly():
     rp = {**ST.to_rules(st), "exit": "fixed_1r"}
     b = R.run(c, rp, meta, exits=["fixed_1r"], start=ST.DEFAULT_PARAMS["slow"] + ST.DEFAULT_PARAMS["zone_lookback"] // 2)[0]
     assert a["all"]["n"] == b["all"]["n"] and a["all"]["total_r"] == b["all"]["total_r"]
+
+
+def test_paper_rule_exit_matches_backtest(tmp_path):
+    from src.analyst import paper
+    from src.store.db import kora_connection
+    conn = kora_connection(tmp_path / "pr.db")
+    paper.reset(conn, 1000)
+    c = candles(1500, seed=5)
+    params = R.norm({"entry_tf": "M15", "mirror": True, "long": [{"a": {"ind": "ema", "params": {"period": 10}}, "op": "crosses_above",
+                                                                   "b": {"ind": "ema", "params": {"period": 30}}}],
+                     "stop": {"type": "atr", "mult": 1.5}, "exit": "ema_trail", "trail": 10})
+    g = R.run(c, params, {"code": "X"}, exits=["ema_trail"])[0]
+    t = next(x for x in g["trades"] if x["i"] + x["bars"] < 1400)
+    cand = {"setup": "my:x", "setup_name": "Test", "direction": t["direction"], "entry_type": "market", "entry": t["entry"],
+            "stop": t["stop"], "tp1": t["entry"], "tp2": t["entry"], "rule_params": params, "signal_time": c[t["i"]]["time"], "timeframe": "M15"}
+    assert paper.open_for_plan(conn, 1, "X", cand, None, 1.0) == 4
+    # before the exit candle has printed: still open
+    paper.manage_rules(conn, {"X": {"M15": c[:t["i"] + 2]}}, {})
+    assert conn.execute("SELECT status FROM paper_trades WHERE policy = 'rule'").fetchone()[0] == "open"
+    # with the full history: closes with the backtest's result
+    paper.manage_rules(conn, {"X": {"M15": c}}, {})
+    row = conn.execute("SELECT status, r FROM paper_trades WHERE policy = 'rule'").fetchone()
+    assert row[0] != "open" and abs(row[1] - t["r"]) < 1e-6

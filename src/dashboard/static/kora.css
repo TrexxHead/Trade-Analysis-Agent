@@ -273,7 +273,7 @@ ul.reasons.neg li::before{content:"−";color:var(--r)}
 
 /* ---------- Strategy Lab ---------- */
 .lab-grid{grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:1000px){.lab-grid{grid-template-columns:1fr}}
+@media (max-width:1000px){.lab-grid{grid-template-columns:minmax(0,1fr)}.lab-list{position:static;max-height:340px}}
 .lab-list{position:sticky;top:12px;max-height:calc(100vh - 130px);overflow-y:auto}
 .sgroup{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:14px 16px 6px}
 .sitem{display:flex;flex-direction:column;gap:2px;padding:9px 16px;border-left:2px solid transparent;cursor:pointer;color:var(--text)}
@@ -321,7 +321,7 @@ fieldset:disabled .bx,fieldset:disabled [data-add]{display:none}
 .tfseg a{font-size:12.5px;font-weight:500;padding:5px 11px;border-radius:8px;color:var(--muted)}
 .tfseg a.on{color:var(--ink);background:rgba(255,255,255,.92)}
 .cgrid{grid-template-columns:minmax(0,1fr) 270px;gap:14px;align-items:start}
-@media (max-width:1150px){.cgrid{grid-template-columns:1fr}.cside{display:none}}
+@media (max-width:1150px){.cgrid{grid-template-columns:minmax(0,1fr)}.cside{display:none}}
 .cpanel{padding:14px 14px 12px}
 .cpanel:fullscreen{background:var(--bg-app);overflow:auto;padding:16px}
 .chead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 8px 4px}
@@ -350,3 +350,16 @@ fieldset:disabled .bx,fieldset:disabled [data-add]{display:none}
 .ind-add button span{width:10px;height:10px;border-radius:3px;flex:none}
 .cside{display:flex;flex-direction:column;gap:14px}
 @media (max-width:760px){.rail{flex-direction:row;flex-wrap:wrap;position:static}.cwrap{flex-direction:column}.cbar .note{display:none}}
+
+@media (max-width:760px){
+  .cpanel{padding:10px 8px}
+  .cbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+  .cbar>*{flex:none}.mixes{flex-wrap:nowrap}
+  .rail{flex-wrap:nowrap;overflow-x:auto;max-width:100%}
+  .rail .rsep{width:1px;height:auto;margin:4px 3px}
+  #ohlc{display:none}
+  .tfseg{margin-left:0;overflow-x:auto;max-width:100%}
+  .ctop{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}.ctop>*{flex:none}
+  .sbar{gap:6px}.bcond{padding:6px}
+}
+.cgrid>*,.lab-grid>*,.cwrap>*{min-width:0}

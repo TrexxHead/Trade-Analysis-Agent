@@ -493,6 +493,7 @@ def live_candidates(candles: list[dict], strategy: dict, meta: dict, stats: dict
         "invalidation": f"A close back {'below' if sign > 0 else 'above'} the {p['slow']} EMA, or the stop",
         "exit_rule": EXITS.get(p["exit"], p["exit"]),
         "calibration": cal, "confidence": cal["confidence"],
+        "rule_params": to_rules(strategy), "signal_time": candles[s["i"]]["time"], "timeframe": p["entry_tf"],
     }]
 
 
@@ -563,6 +564,7 @@ def _rules_candidates(candles: list[dict], strategy: dict, meta: dict, stats: di
         "against": against, "trigger": "Market entry on the signal candle's close",
         "invalidation": "The stop, or your exit rule", "exit_rule": R.exit_name(p["exit"], p),
         "calibration": cal, "confidence": cal["confidence"],
+        "rule_params": p, "signal_time": candles[s["i"]]["time"], "timeframe": p["entry_tf"],
     }]
 
 

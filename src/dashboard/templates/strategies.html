@@ -21,6 +21,17 @@
     </div>
   </div>
 
+  <div class="panel" id="league">
+    <div class="ph"><h3 class="h3 lg">League table</h3><span class="r">Every strategy, same instrument, same history, its own exit, spread charged</span></div>
+    <div class="sbar" style="margin-top:0">
+      <select class="field" id="lg-code"></select>
+      <select class="field" id="lg-tf">{% for t in ['M5','M15','M30','H1','H4'] %}<option {{ 'selected' if t == 'H1' }}>{{ t }}</option>{% endfor %}</select>
+      <button class="btn-pri" id="lg-run">Rank them</button>
+      <span class="note">This is one full-history backtest each. For proof against luck, see <a href="/research">Research</a>.</span>
+    </div>
+    <div id="lg-body" style="margin-top:12px"></div>
+  </div>
+
   <div class="panel flush" style="overflow-x:auto">
     <div style="padding:18px 22px 6px"><h3 class="h3 lg">Live use: who analyses each instrument</h3><div class="note">Kora's setups, your strategy, or both ranked together. Strategies that pass Research also feed Kora automatically (Settings → Research live).</div></div>
     <table class="tbl"><thead><tr><th>Instrument</th><th>Plans from</th><th>Your strategy</th><th>Live state</th></tr></thead><tbody>
@@ -196,6 +207,20 @@
   K.$$('.mode').forEach((a) => a.onclick = async () => { const seg = a.closest('.seg'); seg.querySelectorAll('.fchip').forEach((x) => x.classList.remove('on')); a.classList.add('on');
     const r = await api({ action: 'mode', code: seg.dataset.code, mode: a.dataset.mode }); K.toast(r.message); });
   K.$$('.act').forEach((s) => s.onchange = async () => { const r = await api({ action: 'active', code: s.dataset.code, id: s.value }); K.toast(r.message); });
+
+  // league table
+  K.$('#lg-code').innerHTML = [...new Set([...B.watchlist, ...B.codes])].map((c) => `<option>${c}</option>`).join('');
+  K.$('#lg-run').onclick = async () => {
+    const b = K.$('#lg-run'); b.disabled = true; b.textContent = 'Testing every strategy…';
+    const r = await api({ action: 'league', code: K.$('#lg-code').value, tf: K.$('#lg-tf').value });
+    b.disabled = false; b.textContent = 'Rank them';
+    if (!r.ok) return K.toast(r.message);
+    const tone = (v) => (v == null ? 'w' : v > 0 ? 'g' : v < 0 ? 'r' : 'w'), R2 = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + 'R');
+    K.$('#lg-body').innerHTML = `<div class="note" style="margin-bottom:6px">${esc(r.message)} · ${r.bars} candles ${(r.from || '').slice(0, 10)} → ${(r.to || '').slice(0, 10)}</div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>#</th><th>Strategy</th><th>Exit</th><th>Trades</th><th>Win</th><th>Per trade</th><th>Total</th><th>PF</th><th>Drawdown</th></tr></thead><tbody>
+      ${r.rows.map((x, i) => `<tr${x.n < 15 ? ' style="opacity:.55" title="Fewer than 15 trades: too few to rank"' : ''}><td>${i + 1}</td><td><a href="/strategies?s=${encodeURIComponent(x.ref)}&code=${K.$('#lg-code').value}&tf=${K.$('#lg-tf').value}&run=1" style="font-weight:600;color:#fff">${esc(x.name)}</a></td>
+        <td class="muted" style="font-size:12px">${esc(x.exit || x.error || '')}</td><td>${x.n}</td><td>${x.win_rate ?? '—'}%</td><td class="c-${tone(x.expectancy)}" style="font-weight:600">${R2(x.expectancy)}</td><td>${R2(x.total_r)}</td><td>${x.pf ?? '—'}</td><td>${x.max_dd_r ?? '—'}R</td></tr>`).join('')}</tbody></table></div>`;
+  };
 
   drawList();
   const start = qs.get('s') || (qs.get('id') ? 'my:' + qs.get('id') : null);

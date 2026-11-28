@@ -264,7 +264,7 @@ def research_candidates(candles_by_tf: dict, code: str, meta: dict, store: dict)
             "trigger": "Market entry on the signal candle's close",
             "invalidation": "The stop, or the strategy's exit rule",
             "exit_rule": R.exit_name(p["exit"], p), "calibration": cal, "confidence": cal["confidence"],
-            "timeframe": r["tf"],
+            "timeframe": r["tf"], "rule_params": p, "signal_time": c[s["i"]]["time"],
         })
     return out
 
